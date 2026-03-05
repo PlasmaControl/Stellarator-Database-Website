@@ -4,6 +4,18 @@
 
 {% block extra_head %}
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+<style>
+  #resultOutput a,
+  #resultOutput .img-popup {
+    color: white;
+    text-decoration: none;
+    transition: color 0.3s;
+  }
+  #resultOutput a:hover,
+  #resultOutput .img-popup:hover {
+    color: rgb(220, 50, 50);
+  }
+</style>
 {% endblock %}
 
 {% block content %}

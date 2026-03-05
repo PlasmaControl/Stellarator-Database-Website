@@ -164,9 +164,9 @@ CONFIG_FIELDS = [
 DESC_RUN_FIELDS = [
     ("descrunid", None, "Unique identifier for the desc_run"),
     (
-        "config_name",
+        "configid",
         None,
-        "Unique identifier for the configuration used to generate this desc_run (further details in the configurations table)",
+        "Integer FK to the configuration used to generate this desc_run (further details in the configurations table)",
     ),
     (
         "user_created",
@@ -262,7 +262,7 @@ DESC_RUN_FIELDS = [
 
 VMEC_RUN_FIELDS = [
     ("vmecrunid", None, "Unique identifier for the vmec_run"),
-    ("config_name", None, "Configuration used for this VMEC run"),
+    ("configid", None, "Integer FK to the configuration used for this VMEC run"),
     ("user_created", None, "User who created this VMEC run in the database"),
     ("description", "text", "Description of the VMEC run"),
     ("provenance", "str", "Short description of where this VMEC run came from"),
@@ -280,7 +280,12 @@ VMEC_RUN_FIELDS = [
 ]
 
 PUBLICATION_FIELDS = [
-    ("publicationid", None, "Unique identifier for the publication (string)"),
+    ("publicationid", None, "Auto-assigned integer identifier for the publication"),
+    (
+        "pub_label",
+        "str",
+        "Optional user-assigned label for this publication (e.g. 'Smith2023')",
+    ),
     ("correspauthor_firstname", None, "First name of the corresponding author"),
     ("correspauthor_lastname", None, "Last name of the corresponding author"),
     ("citation", None, "Citation of the publication"),
@@ -374,8 +379,6 @@ Device = type(
 # Configuration
 # ---------------------------------------------------------------------------
 
-# 'name' is in schema as 'str' but needs unique=True — add it explicitly and
-# exclude it from _schema_to_fields so it isn't generated twice.
 Configuration = type(
     "Configuration",
     (models.Model,),
@@ -383,7 +386,7 @@ Configuration = type(
         "__module__": __name__,
         # System-set fields (None in schema)
         "configid": models.AutoField(primary_key=True),
-        "name": models.CharField(max_length=200, unique=True, blank=True, null=True),
+        "name": models.CharField(max_length=200, blank=True, null=True),
         "device": models.ForeignKey(
             Device,
             on_delete=models.SET_NULL,
@@ -393,7 +396,7 @@ Configuration = type(
         ),
         "user_created": models.CharField(max_length=100, blank=True),
         "date_created": models.DateField(null=True, blank=True),
-        # Schema-driven fields (skip 'name' — defined above with unique=True)
+        # Schema-driven fields (skip 'name' — defined above)
         **_schema_to_fields(CONFIG_FIELDS, skip={"name"}),
         # Meta & helpers
         "Meta": type("Meta", (), {"db_table": "configurations"}),
@@ -411,13 +414,14 @@ Publication = type(
     (models.Model,),
     {
         "__module__": __name__,
-        "publicationid": models.CharField(max_length=100, primary_key=True),
+        "publicationid": models.AutoField(primary_key=True),
+        "pub_label": models.CharField(max_length=200, blank=True),
         "correspauthor_firstname": models.CharField(max_length=100, blank=True),
         "correspauthor_lastname": models.CharField(max_length=100, blank=True),
         "citation": models.TextField(blank=True),
         "DOI": models.CharField(max_length=200, blank=True),
         "Meta": type("Meta", (), {"db_table": "publications"}),
-        "__str__": lambda self: self.publicationid,
+        "__str__": lambda self: self.pub_label or f"Publication #{self.publicationid}",
     },
 )
 
@@ -433,22 +437,20 @@ DescRun = type(
         "__module__": __name__,
         # System-set fields (None in schema)
         "descrunid": models.AutoField(primary_key=True),
-        "config_name": models.ForeignKey(
+        "config": models.ForeignKey(
             Configuration,
             on_delete=models.SET_NULL,
             null=True,
             blank=True,
-            db_column="config_name",
-            to_field="name",
+            db_column="configid",
         ),
         "user_created": models.CharField(max_length=100, blank=True),
-        "publicationid": models.ForeignKey(
+        "publication": models.ForeignKey(
             Publication,
             on_delete=models.SET_NULL,
             null=True,
             blank=True,
             db_column="publicationid",
-            to_field="publicationid",
         ),
         "date_created": models.DateField(null=True, blank=True),
         # File path fields (not in schema — set by the upload pipeline)
@@ -475,22 +477,20 @@ VmecRun = type(
         "__module__": __name__,
         # System-set fields (None in schema)
         "vmecrunid": models.AutoField(primary_key=True),
-        "config_name": models.ForeignKey(
+        "config": models.ForeignKey(
             Configuration,
             on_delete=models.SET_NULL,
             null=True,
             blank=True,
-            db_column="config_name",
-            to_field="name",
+            db_column="configid",
         ),
         "user_created": models.CharField(max_length=100, blank=True),
-        "publicationid": models.ForeignKey(
+        "publication": models.ForeignKey(
             Publication,
             on_delete=models.SET_NULL,
             null=True,
             blank=True,
             db_column="publicationid",
-            to_field="publicationid",
         ),
         "date_created": models.DateField(null=True, blank=True),
         # Schema-driven fields

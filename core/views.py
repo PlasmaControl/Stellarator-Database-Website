@@ -120,14 +120,14 @@ def details_view(request, run_type, run_id):
     # Collect all raw field values for display (bare column name → value)
     run_data = [(f.column, getattr(run, f.attname)) for f in run._meta.fields]
 
-    config = run.config_name  # FK object or None
+    config = run.config  # FK object or None
     config_data = (
         [(f.column, getattr(config, f.attname)) for f in config._meta.fields]
         if config
         else []
     )
 
-    pub = run.publicationid  # FK object or None
+    pub = run.publication  # FK object or None
     pub_data = (
         [(f.column, getattr(pub, f.attname)) for f in pub._meta.fields] if pub else []
     )
@@ -398,11 +398,11 @@ def api_query(request):
             booz = row_dict.get("boozer_plot") or ""
             outf = row_dict.get("outputfile") or ""
             surf_cell = (
-                f"<span class='img-popup' data-src='{murl}/{surf}' style='cursor:pointer;color:rgb(50,200,200);'>Image</span>"
+                f"<span class='img-popup' data-src='{murl}/{surf}' style='cursor:pointer;'>Image</span>"
                 if surf else "Missing Image"
             )
             booz_cell = (
-                f"<span class='img-popup' data-src='{murl}/{booz}' style='cursor:pointer;color:rgb(50,200,200);'>Image</span>"
+                f"<span class='img-popup' data-src='{murl}/{booz}' style='cursor:pointer;'>Image</span>"
                 if booz else "Missing Image"
             )
             dl_cell = f"<a href='{murl}/{outf}'>DESC</a>" if outf else "Missing File"
@@ -488,7 +488,7 @@ def _upsert_configuration(config_file, username, device_obj=None):
     if not data:
         return None
     defaults = _fields_from_csv(data, schema.CONFIG_FIELDS)
-    defaults.pop("name", None)  # lookup key — handled separately
+    defaults.pop("name", None)  # stored separately
     defaults["user_created"] = username
     if device_obj is not None:
         defaults["device"] = device_obj
@@ -498,9 +498,11 @@ def _upsert_configuration(config_file, username, device_obj=None):
             found = Device.objects.filter(deviceid=data["deviceid"]).first()
             if found:
                 defaults["device"] = found
-    config, _ = Configuration.objects.get_or_create(
-        name=data.get("name", ""), defaults=defaults
-    )
+    name = data.get("name", "")
+    # name is no longer unique — reuse first match if it exists, otherwise create
+    config = Configuration.objects.filter(name=name).first()
+    if config is None:
+        config = Configuration.objects.create(name=name, **defaults)
     return config
 
 
@@ -555,14 +557,14 @@ def _handle_file_upload(request):
         return {"success": False, "message": f"Could not parse configuration CSV: {e}"}
 
     if config_obj is None:
-        # CSV column is 'config_name' (W7-X style) or 'configid' (SOLOVEV style)
+        # CSV column is 'config_name' (name label) or 'configid' (integer)
         config_name = data.get("config_name") or data.get("configid", "")
         if config_name:
             config_obj = Configuration.objects.filter(name=config_name).first()
 
     desc_fields = _fields_from_csv(data, schema.DESC_RUN_FIELDS)
     desc_fields["user_created"] = username
-    desc_fields["config_name"] = config_obj
+    desc_fields["config"] = config_obj
     desc_fields["date_created"] = date.today()
     desc_run = DescRun.objects.create(**desc_fields)
 
@@ -592,7 +594,7 @@ def _handle_publication_upload(request):
         return {"success": False, "message": "Publication ID is required."}
 
     pub, created = Publication.objects.get_or_create(
-        publicationid=pub_id,
+        pub_label=pub_id,
         defaults={
             "correspauthor_firstname": first_name,
             "correspauthor_lastname": last_name,
@@ -604,7 +606,7 @@ def _handle_publication_upload(request):
     if runid:
         try:
             desc_run = DescRun.objects.get(descrunid=int(runid))
-            desc_run.publicationid = pub
+            desc_run.publication = pub
             desc_run.save(update_fields=["publicationid"])
         except (DescRun.DoesNotExist, ValueError):
             return {"success": False, "message": f"DESC Run ID {runid} not found."}
@@ -634,7 +636,7 @@ _OUTPUT_COLUMNS = {
     "desc_runs": {
         "desc_runs": [
             "descrunid",
-            "config_name",
+            "configid",
             "user_created",
             "description",
             "provenance",
@@ -732,6 +734,7 @@ _OUTPUT_COLUMNS = {
     "publications": {
         "publications": [
             "publicationid",
+            "pub_label",
             "correspauthor_firstname",
             "correspauthor_lastname",
             "citation",
@@ -741,7 +744,7 @@ _OUTPUT_COLUMNS = {
     "vmec_runs": {
         "vmec_runs": [
             "vmecrunid",
-            "config_name",
+            "configid",
             "user_created",
             "description",
             "provenance",
@@ -772,7 +775,7 @@ _OUTPUT_COLUMNS = {
 
 _JOINS = {
     "desc_runs": [
-        "LEFT JOIN configurations ON desc_runs.config_name = configurations.name",
+        "LEFT JOIN configurations ON desc_runs.configid = configurations.configid",
         "LEFT JOIN devices ON configurations.deviceid = devices.deviceid",
         "LEFT JOIN publications ON desc_runs.publicationid = publications.publicationid",
     ],
@@ -784,7 +787,7 @@ _JOINS = {
     ],
     "publications": [],
     "vmec_runs": [
-        "LEFT JOIN configurations ON vmec_runs.config_name = configurations.name",
+        "LEFT JOIN configurations ON vmec_runs.configid = configurations.configid",
         "LEFT JOIN devices ON configurations.deviceid = devices.deviceid",
         "LEFT JOIN publications ON vmec_runs.publicationid = publications.publicationid",
     ],

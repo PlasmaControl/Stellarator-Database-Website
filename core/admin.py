@@ -50,12 +50,13 @@ class ConfigurationAdmin(admin.ModelAdmin):
 class PublicationAdmin(admin.ModelAdmin):
     list_display = (
         "publicationid",
+        "pub_label",
         "correspauthor_firstname",
         "correspauthor_lastname",
         "DOI",
     )
     search_fields = (
-        "publicationid",
+        "pub_label",
         "correspauthor_firstname",
         "correspauthor_lastname",
         "DOI",
@@ -67,7 +68,7 @@ class PublicationAdmin(admin.ModelAdmin):
 class DescRunAdmin(admin.ModelAdmin):
     list_display = (
         "descrunid",
-        "config_name",
+        "config",
         "version",
         "user_created",
         "date_created",
@@ -80,7 +81,7 @@ class DescRunAdmin(admin.ModelAdmin):
 class VmecRunAdmin(admin.ModelAdmin):
     list_display = (
         "vmecrunid",
-        "config_name",
+        "config",
         "vmec_version",
         "user_created",
         "date_created",
