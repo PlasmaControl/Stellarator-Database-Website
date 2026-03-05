@@ -1,0 +1,146 @@
+{% extends 'core/base.html' %}
+{% load static %}
+{% block title %}Upload Data — Stellarator Database{% endblock %}
+
+{% block content %}
+<div class="page-title">Upload Data</div>
+
+<div class="info-text">
+  <div class="info-text-div">
+    <h5>
+      Here you can upload new results to the database. Your username will be automatically
+      recorded as the creator of any uploaded records.
+    </h5>
+  </div>
+  <div class="info-text-div">
+    <h5 style="margin-bottom: 50px;">
+      For more detail on uploading data using the <strong>stelladb</strong> package, refer to
+      <a href="https://github.com/PlasmaControl/Stellarator-Database" target="_blank" style="text-decoration:underline;">the GitHub repo</a>.
+    </h5>
+  </div>
+</div>
+
+<!-- ===== File Upload Form ===== -->
+{% if upload_success %}
+  <div class="success-div" style="text-align:center; font-size:18px; margin:20px 0;">{{ upload_success }}</div>
+{% endif %}
+{% if upload_error %}
+  <div class="error-div" style="text-align:center; font-size:18px; margin:20px 0;">{{ upload_error }}</div>
+{% endif %}
+
+<form id="uploadFileForm" method="post" enctype="multipart/form-data">
+  {% csrf_token %}
+  <input type="hidden" name="form_type" value="upload">
+
+  <div class="upload-wrapper">
+    <div class="upload-element">
+      <h2>Select a ZIP file to upload</h2>
+      <h5>The ZIP file must contain a .h5 file with the solved equilibrium results. Optionally include the input file or DESC Python script.</h5>
+      <div class="choose-file">
+        <input type="file" id="zipToUpload" name="zipToUpload" accept=".zip">
+      </div>
+    </div>
+
+    <div class="upload-element">
+      <h2>Select a .csv file for DESC results <span style="color:#A11922;">*</span></h2>
+      <h5>Use the <code>stelladb</code> library's <code>save_to_db_desc()</code> function for automatic upload, or <code>desc_to_csv()</code> to manually generate the CSV file. Currently only DESC outputs are supported.</h5>
+      <div class="choose-file">
+        <input type="file" id="descToUpload" name="descToUpload" accept=".csv">
+      </div>
+    </div>
+  </div>
+
+  <div class="upload-wrapper">
+    <div class="upload-element3">
+      <h5>Select surface plot of the equilibrium (.webp)</h5>
+      <input type="file" id="surfaceToUpload" name="surfaceToUpload" accept=".webp,image/*">
+    </div>
+    <div class="upload-element3">
+      <h5>Select Boozer plot of the equilibrium (.webp)</h5>
+      <input type="file" id="boozerToUpload" name="boozerToUpload" accept=".webp,image/*">
+    </div>
+  </div>
+
+  <div class="upload-wrapper">
+    <div class="upload-element3">
+      <h5>Select 3D plot of the equilibrium (.html)</h5>
+      <input type="file" id="plot3dToUpload" name="plot3dToUpload" accept=".html">
+    </div>
+  </div>
+
+  <div class="info-text" style="margin-top:30px;">
+    <div class="info-text-div">
+      <h5>
+        If the device and configuration already exist in the database, only the .zip and .csv files are needed.
+        If either is new, also provide the corresponding CSV files below.
+      </h5>
+    </div>
+  </div>
+
+  <div class="upload-wrapper">
+    <div class="upload-element2">
+      <h5>Add a new device with this output? (optional CSV)</h5>
+      <input type="file" id="deviceToUpload" name="deviceToUpload" accept=".csv">
+    </div>
+  </div>
+
+  <div class="upload-wrapper">
+    <div class="upload-element2">
+      <h5>Add a new configuration with this output? (optional CSV)</h5>
+      <input type="file" id="configToUpload" name="configToUpload" accept=".csv">
+    </div>
+  </div>
+
+  <div style="display:flex; justify-content:center; color:#888; margin:10px 0;">
+    <span>* required field</span>
+  </div>
+
+  <div class="button-div">
+    <button type="submit" id="confirmDesc">CONFIRM UPLOAD</button>
+  </div>
+</form>
+
+<!-- ===== Publication Form ===== -->
+<hr style="border-color:#333; margin:40px 0;">
+
+{% if pub_success %}
+  <div class="success-div" style="text-align:center; font-size:18px; margin:20px 0;">{{ pub_success }}</div>
+{% endif %}
+{% if pub_error %}
+  <div class="error-div" style="text-align:center; font-size:18px; margin:20px 0;">{{ pub_error }}</div>
+{% endif %}
+
+<form id="PublicationForm" method="post">
+  {% csrf_token %}
+  <input type="hidden" name="form_type" value="publication">
+
+  <div class="info-text">
+    <div class="info-text-div">
+      <h5 style="margin-top:20px;">
+        Link a publication to a DESC Run. You can add a new publication and link it, or just link an
+        existing one by providing the Publication ID and DESC Run ID. Leave DESC Run ID blank to only
+        add a publication without linking. Note: we recommend setting "Publication ID" the same as the DOI.
+      </h5>
+    </div>
+  </div>
+
+  <div class="upload-wrapper">
+    <div style="width:80%; display:flex; flex-direction:column; gap:10px;">
+      <div style="display:flex; gap:10px;">
+        <input placeholder="DESC Run ID" type="text" id="runid" name="runid" style="flex:1;">
+        <input placeholder="First Name" type="text" id="first_name" name="first_name" style="flex:1;">
+        <input placeholder="Last Name" type="text" id="last_name" name="last_name" style="flex:1;">
+        <input placeholder="DOI" type="text" id="doi" name="doi" style="flex:2;">
+      </div>
+      <div style="display:flex; gap:10px;">
+        <input placeholder="Publication ID (required)" type="text" id="pub_id" name="pub_id" style="width:25%;">
+        <input placeholder="Citation" type="text" id="citation" name="citation" style="flex:1;">
+      </div>
+    </div>
+  </div>
+
+  <div class="button-div">
+    <button type="submit" id="confirmPub">CONFIRM PUBLICATION</button>
+  </div>
+</form>
+{% endblock %}

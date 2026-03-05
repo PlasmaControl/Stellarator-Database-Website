@@ -1,0 +1,65 @@
+{% extends 'core/base.html' %}
+{% block title %}Stellarator Database — Home{% endblock %}
+
+{% block content %}
+<div class="page-title">STELLARATOR DATABASE</div>
+
+<!-- Hero buttons -->
+<div class="home-hero-buttons">
+  {% if user.is_authenticated and user.is_approved %}
+    <a href="{% url 'upload' %}" class="hero-btn hero-btn--upload">Upload Data</a>
+    <a href="{% url 'query' %}" class="hero-btn hero-btn--query">Search Database</a>
+  {% elif user.is_authenticated %}
+    <div class="pending-notice">
+      Your account is pending admin approval. You will be able to upload and query data once approved.
+    </div>
+  {% else %}
+    <a href="{% url 'register' %}" class="hero-btn hero-btn--upload">Register</a>
+    <a href="{% url 'login' %}" class="hero-btn hero-btn--query">Login</a>
+  {% endif %}
+</div>
+
+<!-- About section -->
+<div class="home-cards">
+
+  <div class="home-card">
+    <h2>About the Project</h2>
+    <p>
+      The Stellarator Database is a collaborative platform for the stellarator fusion research community.
+      It provides a centralized repository of equilibrium simulation results computed with the
+      <strong>DESC</strong> and <strong>VMEC</strong> codes, along with device configurations,
+      publication references, and associated data files.
+    </p>
+    <p>
+      Researchers from participating universities and laboratories can upload their DESC equilibrium
+      results, browse existing simulations, and query the database using flexible search criteria.
+    </p>
+  </div>
+
+  <div class="home-card">
+    <h2>What's in the Database</h2>
+    <ul class="home-list">
+      <li><span class="home-list-label">desc_runs</span> — DESC equilibrium simulation results with spectral resolution parameters, stability metrics, and profile data</li>
+      <li><span class="home-list-label">vmec_runs</span> — VMEC equilibrium simulation results</li>
+      <li><span class="home-list-label">configurations</span> — Stellarator magnetic configuration geometry (Fourier coefficients, profiles)</li>
+      <li><span class="home-list-label">devices</span> — Physical stellarator devices (W7-X, HSX, NCSX, etc.)</li>
+      <li><span class="home-list-label">publications</span> — Linked academic publications</li>
+    </ul>
+  </div>
+
+  <div class="home-card">
+    <h2>Getting Started</h2>
+    <ol class="home-list home-list--ordered">
+      <li><strong>Register</strong> for an account and wait for admin approval.</li>
+      <li>Use the <strong>stelladb</strong> Python package to prepare your DESC results for upload,
+          or manually prepare a CSV export. See the
+          <a href="https://github.com/PlasmaControl/Stellarator-Database" target="_blank">GitHub repository</a>
+          for details.</li>
+      <li>Navigate to <strong>Upload Data</strong> to submit your equilibrium files and CSV metadata.</li>
+      <li>Use <strong>Search Data</strong> to query the database with SQL-style filters across any table.</li>
+      <li>Check <strong>Variable Names</strong> for a full description of every database column.</li>
+    </ol>
+  </div>
+
+</div>
+{% endblock %}

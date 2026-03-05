@@ -1,0 +1,34 @@
+{% extends 'core/base.html' %}
+{% block title %}Login — Stellarator Database{% endblock %}
+
+{% block content %}
+<div class="page-title">Login</div>
+
+<div class="auth-wrapper">
+  <form method="post" class="auth-form">
+    {% csrf_token %}
+
+    {% if error %}
+      <div class="auth-error">{{ error }}</div>
+    {% endif %}
+
+    <div class="auth-field">
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" autocomplete="username" required>
+    </div>
+
+    <div class="auth-field">
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" autocomplete="current-password" required>
+    </div>
+
+    <div class="button-div" style="margin-top:30px;">
+      <button type="submit">Login</button>
+    </div>
+
+    <div class="auth-links">
+      <p>Don't have an account? <a href="{% url 'register' %}">Register here</a></p>
+    </div>
+  </form>
+</div>
+{% endblock %}

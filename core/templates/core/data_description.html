@@ -1,0 +1,38 @@
+{% extends 'core/base.html' %}
+{% block title %}Variable Names — Stellarator Database{% endblock %}
+
+{% block content %}
+<div class="page-title">Variable Names and Descriptions</div>
+
+{% for table in tables %}
+  <div class="table-title">
+    <div onclick="expandInfo('{{ table.id }}')">{{ table.title }}</div>
+  </div>
+
+  <div id="{{ table.id }}" class="info-section-class">
+    {% for col_name, col_desc in table.columns %}
+    <div class="column-info">
+      <div class="column-name"><h4>{{ col_name }}</h4></div>
+      <div class="column-description"><h4>{{ col_desc }}</h4></div>
+    </div>
+    {% endfor %}
+  </div>
+{% endfor %}
+
+{% endblock %}
+
+
+{% block extra_scripts %}
+<script>
+  function expandInfo(id) {
+    const box = document.getElementById(id);
+    if (window.getComputedStyle(box).display === 'block') {
+      box.style.height = '0px';
+      setTimeout(() => { box.style.display = 'none'; }, 500);
+    } else {
+      box.style.display = 'block';
+      box.style.height = box.scrollHeight + 'px';
+    }
+  }
+</script>
+{% endblock %}

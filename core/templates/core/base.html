@@ -1,0 +1,110 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Stellarator Database{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'core/css/style.css' %}">
+  {% block extra_head %}{% endblock %}
+  <!-- Apply saved theme before paint to avoid flash -->
+  <script>
+    (function() {
+      if (localStorage.getItem('theme') === 'light') {
+        document.documentElement.setAttribute('data-theme', 'light');
+      }
+    })();
+  </script>
+</head>
+
+<body class="body-style">
+
+  <!-- ===== HEADER ===== -->
+  <header class="site-header">
+    <nav class="nav-container">
+      <div class="nav-left">
+        <a href="{% url 'home' %}">Stellarator Database</a>
+      </div>
+      <div class="nav-right">
+        <div class="nav-links" id="navLinks">
+          {% if user.is_authenticated %}
+            <a href="{% url 'upload' %}">Upload Data</a>
+          {% endif %}
+          <a href="{% url 'query' %}">Search Data</a>
+          <a href="{% url 'data_description' %}">Variable Names</a>
+          {% if user.is_authenticated %}
+            <a href="{% url 'logout' %}" class="nav-auth-link">{{ user.username }} (logout)</a>
+          {% else %}
+            <a href="{% url 'login' %}" class="nav-auth-link">Login</a>
+            <a href="{% url 'register' %}" class="nav-auth-link">Register</a>
+          {% endif %}
+        </div>
+        <button class="theme-toggle" id="themeToggle" aria-label="Toggle light/dark mode">
+          <span class="toggle-knob"></span>
+        </button>
+        <div class="nav-hamburger" id="navHamburger" aria-label="Open navigation menu">
+          <div class="bar1"></div>
+          <div class="bar2"></div>
+          <div class="bar3"></div>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <!-- ===== MAIN CONTENT ===== -->
+  <div class="main-content">
+
+    {% if messages %}
+      <div class="django-messages">
+        {% for message in messages %}
+          <div class="django-message django-message--{{ message.tags }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% block content %}{% endblock %}
+
+  </div>
+
+  <!-- ===== FOOTER ===== -->
+  <footer class="site-footer">
+    <div class="footer-container">
+      <p><strong>Princeton University Plasma Control Group</strong></p>
+      <p>Page created by Yigit Gunsur Elmacioglu</p>
+      <p>Contact: ye2698[at]princeton.edu</p>
+    </div>
+  </footer>
+
+  {% block extra_scripts %}{% endblock %}
+
+  <script>
+    (function() {
+      const btn = document.getElementById('themeToggle');
+      btn.addEventListener('click', function() {
+        const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+        if (isLight) {
+          document.documentElement.removeAttribute('data-theme');
+          localStorage.setItem('theme', 'dark');
+        } else {
+          document.documentElement.setAttribute('data-theme', 'light');
+          localStorage.setItem('theme', 'light');
+        }
+      });
+
+      const hamburger = document.getElementById('navHamburger');
+      const navLinks = document.getElementById('navLinks');
+      hamburger.addEventListener('click', function(e) {
+        e.stopPropagation();
+        navLinks.classList.toggle('open');
+        hamburger.classList.toggle('open');
+      });
+      document.addEventListener('click', function(e) {
+        if (!navLinks.contains(e.target) && e.target !== hamburger) {
+          navLinks.classList.remove('open');
+          hamburger.classList.remove('open');
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

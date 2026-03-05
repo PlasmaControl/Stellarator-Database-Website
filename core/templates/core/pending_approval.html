@@ -1,0 +1,25 @@
+{% extends 'core/base.html' %}
+{% block title %}Pending Approval — Stellarator Database{% endblock %}
+
+{% block content %}
+<div class="page-title">Account Pending Approval</div>
+
+<div class="auth-wrapper">
+  <div class="auth-form" style="text-align:center;">
+    <div class="auth-notice" style="font-size:18px; line-height:1.8;">
+      <p>Hello, <strong>{{ user.get_full_name|default:user.username }}</strong>.</p>
+      <p>
+        Your account is currently <strong>pending administrator approval</strong>.
+        Once an admin approves your account you will have full access to upload and query the database.
+      </p>
+      <p>
+        If you believe this is taking too long, please contact
+        <a href="mailto:ye2698@princeton.edu">ye2698[at]princeton.edu</a>.
+      </p>
+    </div>
+    <div class="button-div" style="margin-top:30px;">
+      <a href="{% url 'home' %}" style="all:unset; padding:8px 20px; font-size:15px; background-color:#A11922; color:#C5C5C5; border-radius:8px; border:1px solid #d8d5d5; font-weight:600; cursor:pointer;">Back to Home</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

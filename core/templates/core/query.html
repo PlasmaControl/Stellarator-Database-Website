@@ -1,0 +1,240 @@
+{% extends 'core/base.html' %}
+{% load static %}
+{% block title %}Query — Stellarator Database{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+{% endblock %}
+
+{% block content %}
+<div class="page-title">Query Form</div>
+
+<!-- Toggle explanation -->
+<div style="display:flex; justify-content:center;">
+  <div id="info-click" onclick="expandInfo()">Click to toggle explanations</div>
+</div>
+
+<div id="info-section" class="info-section-class">
+  <div style="display:flex; flex-direction:column;">
+    <div style="display:flex; width:100%; justify-content:center;">
+      <h5 class="info-text-h5">
+        To make a query on the database, the user should first choose a table to search. This will also specify which parameters the user can put condition on. So, for example, the user can search in "desc_runs" table with "descrunid > 100" condition, and select to see other columns which are related to "desc_runs" table. However, the user cannot make a direct search based on "NFP > 5" in "desc_runs" table, the user must use "configurations" or "devices" table for that. The user can check available columns of each table from "Search Column" box.
+      </h5>
+    </div>
+    <div style="display:flex; width:100%; justify-content:center;">
+      <h5 class="info-text-h5">
+        "Search Column" and "Search Criteria" boxes are optional in case the user only wants to  see the results that satisfy given condition. The database operates using SQL and the conditions must be given in SQL syntax. For example, for numeric values, the user can ask values greater than 2 by typing ">2" without double quotes. Similarly, smaller than 2 is "<2", equal to 2 is "=2", greater than or equal to 2 is ">=" and smaller than or equal to 2 is "<=2". In case of text values, for example if the user wants to see the results that are axisymmetric, choose "configurations" table, select "class" column and ask condition " ='AS' ", again without double quotes. Using "=" sign is case sensitive, to find results which include "precise" in them, one can search in "configurations" table, "name" column and ask " LIKE '%precise%' ". For more details about SQL query, refer to web or ask AI :)
+      </h5>
+    </div>
+    <div style="display:flex; width:100%; justify-content:center;">
+      <h5 class="info-text-h5">
+        "Columns to Show" includes not only the columns of the selected table but all the data which is linked to that table. For example, "desc_runs" and "configurations" tables are connected through configuration name. "desc_runs" and "publications" are linked through publicationid data. So, the user can look for publications related to "NFP > 1" by selecting "configurations" table, "NFP" column, " >1 " condition and author name, citation, doi as the output columns.
+      </h5>
+    </div>
+  </div>
+</div>
+
+<!-- Query form -->
+<div class="input-wrapper">
+  <form id="inputForm">
+    {% csrf_token %}
+
+    <div class="input-element">
+      <div class="exp-text">
+        <h2>Choose Table *</h2>
+      </div>
+      <select type="text" id="qtable" name="qtable">
+        <option value="" selected disabled hidden></option>
+        <option>desc_runs</option>
+        <option>configurations</option>
+        <option>devices</option>
+        <option>publications</option>
+        <option>vmec_runs</option>
+      </select>
+    </div>
+
+    <div class="input-element">
+      <div class="exp-text">
+        <h2>Choose Column to constrain</h2>
+      </div>
+      <select type="text" id="qfin" name="qfin"></select>
+    </div>
+
+    <div class="input-element">
+      <div class="exp-text">
+        <h2>Search Criteria</h2>
+        <div class="tooltip">
+          <h5>Please use SQL syntax, examples &#9432;</h5>
+          <div class="tooltip-content">
+            <h5>For numerical values: &gt;2 , &lt;2 , =2, &gt;=2</h5>
+            <h5>For text values: = 'SOLOVEV'</h5>
+            <h5>Partial match: LIKE '%precise%'</h5>
+            <h5>To see everything, leave this field empty</h5>
+          </div>
+        </div>
+      </div>
+      <input type="text" name="qthr" id="qthr" placeholder="e.g.  >5  or  LIKE '%W7%'">
+    </div>
+
+    <div class="input-element">
+      <div class="exp-text">
+        <h2>Columns to Show *</h2>
+        <h5>hold Ctrl or &#8984; for multiple selection</h5>
+      </div>
+      <select class="dropdown" type="text" id="qfout" multiple name="qfout" onclick="enlargeDropdown()"></select>
+    </div>
+
+    <div class="input-element-selected">
+      <div id="selectedItemsContainer" class="item-container"></div>
+    </div>
+
+    <div style="display:flex; width:100%; justify-content:center;">
+      <div style="width:75%; text-align:end;">* required fields</div>
+    </div>
+
+    <div class="button-div">
+      <button type="reset" id="clear"
+        onclick="document.getElementById('qtable').value='';
+                 document.getElementById('qfin').innerHTML='';
+                 document.getElementById('qfout').innerHTML='';
+                 document.getElementById('qthr').value='';
+                 shrinkDropdown(); clearAll();">
+        Clear
+      </button>
+      <div style="width:40px;"></div>
+      <button type="submit" id="submit">Query</button>
+    </div>
+  </form>
+</div>
+
+<div class="button-div">
+  <button id="download" onclick="tableToCSV()" style="display:none; background-color:rgb(27,111,147);">
+    DOWNLOAD TABLE AS .CSV
+  </button>
+</div>
+
+<div id="resultOutput" style="display:none;"></div>
+{% endblock %}
+
+
+{% block extra_scripts %}
+<script src="https://code.jquery.com/jquery-3.7.0.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+
+<script>
+const tableNameInput = document.getElementById('qtable');
+const columnIN = document.getElementById('qfin');
+const columnOUT = document.getElementById('qfout');
+
+tableNameInput.addEventListener('change', () => {
+  const tableName = tableNameInput.value;
+  if (!tableName) { columnIN.innerHTML = ''; columnOUT.innerHTML = ''; return; }
+
+  fetch(`/api/columns/single/?tableName=${encodeURIComponent(tableName)}`)
+    .then(r => r.text()).then(html => { columnIN.innerHTML = html; });
+
+  fetch(`/api/columns/?tableName=${encodeURIComponent(tableName)}`)
+    .then(r => r.text()).then(html => { columnOUT.innerHTML = html; clearAll(); });
+});
+
+// Form submit → AJAX query
+document.getElementById('inputForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const selectedOptions = Array.from(columnOUT.selectedOptions).map(o => o.value);
+  const qfout = selectedOptions.join(',');
+  const qtable = tableNameInput.value;
+  const qfin = columnIN.value;
+  const qthr = document.getElementById('qthr').value;
+
+  const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+  const formData = new FormData();
+  formData.append('qtable', qtable);
+  formData.append('qfin', qfin);
+  formData.append('qthr', qthr);
+  formData.append('qfout', qfout);
+  formData.append('csrfmiddlewaretoken', csrfToken);
+
+  fetch('/api/query/', { method: 'POST', body: formData })
+    .then(r => r.text())
+    .then(html => {
+      const output = document.getElementById('resultOutput');
+      output.innerHTML = html;
+      output.style.display = 'block';
+      document.getElementById('download').style.display = 'block';
+      const table = output.querySelector('table');
+      if (table) {
+        $(table).DataTable({ paging: false, scrollX: true, autoWidth: false });
+      }
+    });
+});
+
+function enlargeDropdown() {
+  columnOUT.style.height = '250px';
+}
+function shrinkDropdown() {
+  columnOUT.style.height = '42px';
+}
+function expandInfo() {
+  const box = document.getElementById('info-section');
+  if (window.getComputedStyle(box).display === 'block') {
+    box.style.height = '0px';
+    setTimeout(() => { box.style.display = 'none'; }, 500);
+  } else {
+    box.style.display = 'block';
+    box.style.height = box.scrollHeight + 'px';
+  }
+}
+
+// Selected items tags
+function addItemToContainer(item) {
+  const container = document.getElementById('selectedItemsContainer');
+  if ([...container.querySelectorAll('.selected-item')].some(el => el.dataset.value === item)) return;
+  const box = document.createElement('div');
+  box.className = 'selected-item';
+  box.dataset.value = item;
+  box.textContent = item.replace('.', '->');
+  const x = document.createElement('span');
+  x.className = 'close-icon';
+  x.innerHTML = '&#10006;';
+  x.addEventListener('click', () => {
+    container.removeChild(box);
+    const opt = columnOUT.querySelector(`option[value="${item}"]`);
+    if (opt) opt.selected = false;
+  });
+  box.appendChild(x);
+  container.appendChild(box);
+}
+columnOUT.addEventListener('change', function() {
+  const selected = Array.from(this.selectedOptions).map(o => o.value);
+  const container = document.getElementById('selectedItemsContainer');
+  [...container.querySelectorAll('.selected-item')].forEach(el => {
+    if (!selected.includes(el.dataset.value)) container.removeChild(el);
+  });
+  selected.forEach(addItemToContainer);
+});
+function clearAll() {
+  document.getElementById('selectedItemsContainer').innerHTML = '';
+}
+
+// CSV download
+function tableToCSV() {
+  let csv = [];
+  const rows = document.querySelectorAll('#resultOutput tr');
+  rows.forEach((row, i) => {
+    if (i === 1) return; // skip DataTables search row
+    const cols = row.querySelectorAll('td, th');
+    const rowData = [];
+    cols.forEach((col, j) => { if (j < cols.length - 1) rowData.push('"' + col.innerText.replace(/"/g, '""') + '"'); });
+    csv.push(rowData.join(','));
+  });
+  const blob = new Blob([csv.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'stellarator-query.csv';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+</script>
+{% endblock %}

@@ -1,0 +1,43 @@
+{% extends 'core/base.html' %}
+{% block title %}Register — Stellarator Database{% endblock %}
+
+{% block content %}
+<div class="page-title">Register</div>
+
+<div class="auth-wrapper">
+  <form method="post" class="auth-form">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <div class="auth-error">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    {% for field in form %}
+      <div class="auth-field">
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {% if field.errors %}
+          <div class="auth-field-error">
+            {% for error in field.errors %}{{ error }}{% endfor %}
+          </div>
+        {% endif %}
+        {% if field.help_text %}
+          <div class="auth-field-help">{{ field.help_text }}</div>
+        {% endif %}
+      </div>
+    {% endfor %}
+
+    <div class="auth-notice">
+      After registering, your account will be reviewed by an administrator before you can upload or query data.
+    </div>
+
+    <div class="button-div" style="margin-top:30px;">
+      <button type="submit">Register</button>
+    </div>
+
+    <div class="auth-links">
+      <p>Already have an account? <a href="{% url 'login' %}">Login here</a></p>
+    </div>
+  </form>
+</div>
+{% endblock %}
