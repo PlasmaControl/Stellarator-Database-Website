@@ -3,6 +3,12 @@ __pycache__/
 *.pyc
 *.pyo
 
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+
 # Django
 db.sqlite3
 test-storage/

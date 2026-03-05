@@ -40,9 +40,41 @@ Uploaded files are stored in `test-storage/` (excluded from git).
 
 ## Deployment (AWS)
 
-### Additional dependencies
+### Install Python
+
+On a fresh Amazon Linux 2023 / Ubuntu EC2 instance, install Python 3 if it isn't already present:
+
+**Amazon Linux 2023:**
+```bash
+sudo dnf install -y python3 python3-pip
+```
+
+**Ubuntu:**
+```bash
+sudo apt update
+sudo apt install -y python3 python3-pip python3-venv
+```
+
+### Clone the repository
 
 ```bash
+git clone https://github.com/Plasma-Control/Stellarator-Database-Website.git
+cd Stellarator-Database-Website
+```
+
+### Create and activate a virtual environment
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
+
+The `(venv)` prefix in your prompt confirms the environment is active. Always activate it before running any project commands.
+
+### Install dependencies
+
+```bash
+pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
