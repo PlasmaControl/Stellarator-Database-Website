@@ -22,3 +22,6 @@ test-storage/
 .vscode/
 .idea/
 .claude/
+
+old_database_utils/
+sample-data
