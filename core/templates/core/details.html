@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Details — {{ run_label }} Run #{{ run_id }}</title>
+  {% if plot3d_content %}
+  <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist@latest/plotly.min.js"></script>
+  {% endif %}
+  <style>
+    body {
+      background-color: rgb(0,0,0);
+      margin: 0;
+      font-family: Roboto, Sans-serif;
+    }
+    .page-wrapper {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      margin: 0;
+    }
+    .page-inner-wrapper {
+      width: 90%;
+      display: flex;
+      flex-direction: column;
+    }
+    .image-wrapper {
+      width: 100%;
+      max-height: 600px;
+      display: flex;
+      flex-direction: row;
+      padding: 0;
+      padding-bottom: 50px;
+      align-items: center;
+      justify-content: space-evenly;
+      margin: 0;
+    }
+    .image-wrapper a {
+      height: 100%;
+      width: 45%;
+    }
+    .main-img {
+      width: 70%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .image-container {
+      width: 100%;
+      height: 100%;
+    }
+    .image-container img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      border-radius: 10px;
+    }
+    .subsection {
+      color: white;
+      font-size: 35px;
+      margin-bottom: 20px;
+      margin-top: 20px;
+      font-weight: 600;
+    }
+    .data-wrapper {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      height: auto;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+    }
+    .data {
+      display: flex;
+      flex-direction: row;
+      width: 80%;
+      padding: 5px;
+      padding-left: 20px;
+      border-radius: 5px;
+    }
+    .data:hover {
+      background: rgb(100,100,100);
+    }
+    .data:hover .data-value { color: white; }
+    .data:hover .data-class { color: rgb(250,50,50); }
+    .data-class, .data-value { font-size: 20px; }
+    .data-class { color: #A11922; margin-right: 20px; }
+    .data-value { color: rgb(170,170,170); }
+    .download {
+      height: 50px;
+      font-size: 25px;
+      color: white;
+      text-align: center;
+    }
+    .download:hover { color: rgb(50,200,200); }
+    html #plot3d {
+      width: 100%;
+    }
+
+    @media screen and (max-width: 1250px) {
+      .page-inner-wrapper { width: 100%; margin: 0; }
+      .page-wrapper { margin: 0; }
+      .image-wrapper { flex-direction: column; margin: 0; padding: 0; }
+      .main-img { width: 98%; }
+      .main-img img { height: 100%; width: 100%; border-radius: 0; }
+      .image-container { width: 100%; }
+      .image-container img { width: 100%; height: 100%; object-fit: contain; border-radius: 10px; }
+      .data { width: 98%; padding: 2px; padding-left: 3px; border-radius: 2px; }
+    }
+  </style>
+</head>
+<body>
+
+<h1 style="width:100%;height:60px;font-size:35px;color:white;text-align:center;border-bottom:2px solid white;">
+  Details of {{ pk_col }} : {{ run_id }}
+</h1>
+
+<div class="page-wrapper"><div class="page-inner-wrapper">
+
+  {# Download link #}
+  <div style="width:100%;display:flex;justify-content:center;">
+    {% if download_url %}
+      <a href="{{ download_url }}" class="download">Download</a>
+    {% else %}
+      <span class="download" style="color:rgb(120,120,120);">No file available</span>
+    {% endif %}
+  </div>
+
+  {# 3D Plot — inline Plotly fragment #}
+  {% if run_type == "desc" %}
+  <div class="subsection">3D Plot of the equilibrium</div>
+  <div class="image-wrapper">
+    <div class="main-img">
+      <div style="display:flex;justify-content:center;width:100%;">
+        {% if plot3d_content %}
+          {{ plot3d_content|safe }}
+        {% else %}
+          <p style="color:rgb(170,170,170);">3D plot not available.</p>
+        {% endif %}
+      </div>
+      <div style="color:rgb(170,170,170);margin-top:8px;">**The resolution of the plot is low due to storage space and computational constraints. To get similar 3D plot on your computer, you can use DESC.</div>
+      <div style="margin-left:30px;color:rgb(170,170,170);">from desc.plotting import plot_3d</div>
+      <div style="margin-left:30px;color:rgb(170,170,170);">plot_3d(eq, '|B|')</div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# Flux Surfaces and Boozer Plot — click opens image in new tab #}
+  {% if surface_url or boozer_url %}
+  <div class="subsection">Flux Surfaces and Boozer Plot</div>
+  <div class="image-wrapper" id="plot">
+    {% if surface_url %}
+      <a href="{{ surface_url }}" target="_blank">
+        <div class="image-container"><img src="{{ surface_url }}" alt="surface-plot"></div>
+      </a>
+    {% else %}
+      <div class="image-container" style="display:flex;align-items:center;justify-content:center;">
+        <span style="color:rgb(170,170,170);">Missing Image</span>
+      </div>
+    {% endif %}
+    {% if boozer_url %}
+      <a href="{{ boozer_url }}" target="_blank">
+        <div class="image-container"><img src="{{ boozer_url }}" alt="Boozer-plot"></div>
+      </a>
+    {% else %}
+      <div class="image-container" style="display:flex;align-items:center;justify-content:center;">
+        <span style="color:rgb(170,170,170);">Missing Image</span>
+      </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# Run details #}
+  <div class="subsection">{{ run_label }} Run Details</div>
+  <div class="data-wrapper" id="dataSim">
+    {% for col, val in run_data %}
+    <div class="data">
+      <div class="data-class">{{ col }}:</div>
+      <div class="data-value">{{ val|default:"" }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {# Configuration details #}
+  <div class="subsection">Configuration Details</div>
+  {% if config_data %}
+  <div class="data-wrapper">
+    {% for col, val in config_data %}
+    <div class="data">
+      <div class="data-class">{{ col }}:</div>
+      <div class="data-value">{{ val|default:"" }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="data-wrapper">
+    <div class="data">
+      <div class="data-value">No configuration linked to this run.</div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# Publication details #}
+  <div class="subsection">Publication Details</div>
+  {% if pub_data %}
+  <div class="data-wrapper">
+    {% for col, val in pub_data %}
+    <div class="data">
+      <div class="data-class">{{ col }}:</div>
+      <div class="data-value">{{ val|default:"" }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="data-wrapper">
+    <div class="data">
+      <div class="data-value">There is no available publication for this simulation.</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div style="width:100%;height:100px;"></div>
+</div></div>
+
+</body>
+</html>

@@ -15,7 +15,7 @@ from django.conf import settings
 
 from .forms import RegistrationForm
 from .models import Device, Configuration, Publication, DescRun
-from . import schema
+from . import tables as schema
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +96,105 @@ def register_view(request):
 
 def home_view(request):
     return render(request, "core/home.html")
+
+
+def details_view(request, run_type, run_id):
+    """Standalone details page for a single DESC or VMEC run (opens in new tab)."""
+    from .models import DescRun, VmecRun
+
+    if run_type == "desc":
+        run = DescRun.objects.filter(descrunid=run_id).first()
+        if run is None:
+            return HttpResponse("<h1>Run not found</h1>", status=404)
+        pk_col = "descrunid"
+        run_label = "DESC"
+    elif run_type == "vmec":
+        run = VmecRun.objects.filter(vmecrunid=run_id).first()
+        if run is None:
+            return HttpResponse("<h1>Run not found</h1>", status=404)
+        pk_col = "vmecrunid"
+        run_label = "VMEC"
+    else:
+        return HttpResponse("<h1>Unknown run type</h1>", status=404)
+
+    # Collect all raw field values for display (bare column name → value)
+    run_data = [(f.column, getattr(run, f.attname)) for f in run._meta.fields]
+
+    config = run.config_name  # FK object or None
+    config_data = (
+        [(f.column, getattr(config, f.attname)) for f in config._meta.fields]
+        if config
+        else []
+    )
+
+    pub = run.publicationid  # FK object or None
+    pub_data = (
+        [(f.column, getattr(pub, f.attname)) for f in pub._meta.fields] if pub else []
+    )
+
+    murl = settings.MEDIA_URL.rstrip("/")
+
+    plot3d_content = ""
+    if run_type == "desc" and getattr(run, "plot3d", ""):
+        plot3d_path = os.path.join(settings.MEDIA_ROOT, run.plot3d)
+        try:
+            with open(plot3d_path, "r", encoding="utf-8") as fh:
+                plot3d_content = fh.read()
+        except OSError:
+            plot3d_content = ""
+
+    surface_url = f"{murl}/{run.surface_plot}" if run_type == "desc" and getattr(run, "surface_plot", "") else None
+    boozer_url = f"{murl}/{run.boozer_plot}" if run_type == "desc" and getattr(run, "boozer_plot", "") else None
+    download_url = f"{murl}/{run.outputfile}" if getattr(run, "outputfile", "") else None
+
+    return render(
+        request,
+        "core/details.html",
+        {
+            "run_type": run_type,
+            "run_label": run_label,
+            "run_id": run_id,
+            "pk_col": pk_col,
+            "run_data": run_data,
+            "config": config,
+            "config_data": config_data,
+            "pub": pub,
+            "pub_data": pub_data,
+            "plot3d_content": plot3d_content,
+            "surface_url": surface_url,
+            "boozer_url": boozer_url,
+            "download_url": download_url,
+        },
+    )
+
+
+@require_POST
+def download_all_view(request):
+    """Zip all output files for the given DESC run IDs and stream as a single download."""
+    import zipfile
+    import io
+    from .models import DescRun
+
+    runids_str = request.POST.get("descrunids", "")
+    runids = [int(x) for x in runids_str.split(",") if x.strip().isdigit()]
+    if not runids:
+        return HttpResponse("No runs specified.", status=400)
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
+        for runid in runids:
+            run = DescRun.objects.filter(descrunid=runid).first()
+            if run and getattr(run, "outputfile", ""):
+                path = os.path.join(settings.MEDIA_ROOT, run.outputfile)
+                try:
+                    with open(path, "rb") as fh:
+                        zf.writestr(f"desc_{runid}_equilibrium.zip", fh.read())
+                except OSError:
+                    pass
+    buf.seek(0)
+    response = HttpResponse(buf.read(), content_type="application/zip")
+    response["Content-Disposition"] = 'attachment; filename="desc_runs.zip"'
+    return response
 
 
 def data_description_view(request):
@@ -205,9 +304,26 @@ def api_query(request):
             '<p style="color:red">No valid output columns selected.</p>'
         )
 
+    # Determine if Details / media columns are needed (mirrors PHP $needsDetails logic).
+    # For desc_runs and vmec_runs this is always true.
+    needs_details = qtable in ("desc_runs", "vmec_runs")
+
+    # Extra columns required for link generation that the user may not have selected.
+    # These are appended to the SELECT but hidden from the data columns in the output.
+    if qtable == "desc_runs":
+        _media_bare = ["descrunid", "surface_plot", "boozer_plot", "outputfile"]
+    elif qtable == "vmec_runs":
+        _media_bare = ["vmecrunid"]
+    else:
+        _media_bare = []
+    extra_bare = [c for c in _media_bare if f"{qtable}.{c}" not in safe_output]
+    extra_qualified = [f"{qtable}.{c}" for c in extra_bare]
+    hidden_cols = set(extra_bare)  # bare col names that should be hidden in display
+
     # Build SQL
     joins = _JOINS.get(qtable, [])
-    select_parts = _build_select_parts(qtable, safe_output)
+    all_select = safe_output + extra_qualified
+    select_parts = _build_select_parts(qtable, all_select)
     sql = f"SELECT {', '.join(select_parts)} FROM {qtable}"
     if joins:
         sql += " " + " ".join(joins)
@@ -216,7 +332,6 @@ def api_query(request):
     if qfin and qthr and qfin in allowed_filter:
         operator, value = _parse_criteria(qthr)
         if operator:
-            # Qualify column with table name to avoid ambiguity
             qualified_col = f"{qtable}.{qfin}"
             if operator.upper() == "LIKE":
                 sql += f" WHERE {qualified_col} LIKE ?"
@@ -235,24 +350,72 @@ def api_query(request):
     if not rows:
         return HttpResponse('<p style="color:orange">No results found.</p>')
 
-    # Build HTML table
+    murl = settings.MEDIA_URL.rstrip("/")
+    dl_runids = []  # descrunids that have a zip file — collected during row loop
+
+    # Build HTML table header
     html = '<table class="result-table" id="queryResultTable">'
     html += "<thead><tr>"
     for name in col_names:
-        html += f"<th>{name}</th>"
-    html += "<th>Details</th>"
+        if name not in hidden_cols:
+            html += f"<th>{name}</th>"
+    if needs_details:
+        html += "<th>Details</th>"
+    if qtable == "desc_runs":
+        html += "<th>Surface Plot</th><th>Boozer Plot</th><th>Download</th>"
     html += "</tr></thead><tbody>"
 
     for row in rows:
+        row_dict = dict(zip(col_names, row))
         html += "<tr>"
-        for cell in row:
+
+        # Regular display columns (skip hidden media columns)
+        for name, cell in zip(col_names, row):
+            if name in hidden_cols:
+                continue
             val = "" if cell is None else str(cell)
             html += f"<td>{val}</td>"
-        # Details link placeholder
-        html += "<td>—</td>"
+
+        # Details link — mirrors PHP $detailLink logic
+        if needs_details:
+            if qtable == "desc_runs":
+                run_id = row_dict.get("descrunid")
+                detail_link = (
+                    f"<a href='/details/desc/{run_id}/' target='_blank'>Click</a>"
+                )
+            elif qtable == "vmec_runs":
+                run_id = row_dict.get("vmecrunid")
+                detail_link = (
+                    f"<a href='/details/vmec/{run_id}/' target='_blank'>Click</a>"
+                )
+            else:
+                detail_link = "No Data"
+            html += f"<td>{detail_link}</td>"
+
+        # Surface Plot / Boozer Plot / Download — desc_runs only (mirrors PHP image logic)
+        if qtable == "desc_runs":
+            surf = row_dict.get("surface_plot") or ""
+            booz = row_dict.get("boozer_plot") or ""
+            outf = row_dict.get("outputfile") or ""
+            surf_cell = (
+                f"<span class='img-popup' data-src='{murl}/{surf}' style='cursor:pointer;color:rgb(50,200,200);'>Image</span>"
+                if surf else "Missing Image"
+            )
+            booz_cell = (
+                f"<span class='img-popup' data-src='{murl}/{booz}' style='cursor:pointer;color:rgb(50,200,200);'>Image</span>"
+                if booz else "Missing Image"
+            )
+            dl_cell = f"<a href='{murl}/{outf}'>DESC</a>" if outf else "Missing File"
+            html += f"<td>{surf_cell}</td><td>{booz_cell}</td><td>{dl_cell}</td>"
+            if outf and row_dict.get("descrunid") is not None:
+                dl_runids.append(str(row_dict["descrunid"]))
+
         html += "</tr>"
 
     html += "</tbody></table>"
+    if dl_runids:
+        ids = ",".join(dl_runids)
+        html += f'<div id="dl-all-meta" data-runids="{ids}" style="display:none;"></div>'
     return HttpResponse(html)
 
 
@@ -290,20 +453,18 @@ def _parse_csv_first_row(file_obj):
 _CASTERS = {"int": _safe_int, "float": _safe_float, "bool": _safe_bool}
 
 
-def _fields_from_csv(data, fields, renames=None):
-    """Build model kwargs from a CSV row using a schema field list from schema.py.
+def _fields_from_csv(data, fields):
+    """Build model kwargs from a CSV row using a schema field list.
 
     Skips fields whose type is None (system-set fields like PKs and FKs).
-    Applies renames for columns whose DB name differs from the Django attribute name.
+    Column names in the schema are the same as Django attribute names.
     """
-    renames = renames or {}
     result = {}
     for col, dtype, _ in fields:
         if dtype is None:
             continue
         val = data.get(col)
-        attr = renames.get(col, col)
-        result[attr] = val or "" if dtype == "str" else _CASTERS[dtype](val)
+        result[col] = val or "" if dtype in ("str", "text") else _CASTERS[dtype](val)
     return result
 
 
@@ -312,7 +473,7 @@ def _upsert_device(device_file, username):
     data = _parse_csv_first_row(device_file)
     if not data:
         return None
-    defaults = _fields_from_csv(data, schema.DEVICE_FIELDS, schema.DEVICE_RENAMES)
+    defaults = _fields_from_csv(data, schema.DEVICE_FIELDS)
     defaults.pop("name", None)  # lookup key — handled separately
     defaults["user_created"] = username
     device, _ = Device.objects.get_or_create(
@@ -326,7 +487,7 @@ def _upsert_configuration(config_file, username, device_obj=None):
     data = _parse_csv_first_row(config_file)
     if not data:
         return None
-    defaults = _fields_from_csv(data, schema.CONFIG_FIELDS, schema.CONFIG_RENAMES)
+    defaults = _fields_from_csv(data, schema.CONFIG_FIELDS)
     defaults.pop("name", None)  # lookup key — handled separately
     defaults["user_created"] = username
     if device_obj is not None:
@@ -344,21 +505,22 @@ def _upsert_configuration(config_file, username, device_obj=None):
 
 
 def _save_desc_run_files(desc_run, zip_file, surface_file, boozer_file, plot3d_file):
-    """Save uploaded files to MEDIA_ROOT/<descrunid>/ and update the record."""
-    run_dir = os.path.join(settings.MEDIA_ROOT, str(desc_run.descrunid))
+    """Save uploaded files to MEDIA_ROOT/desc-id-<id>/ and update the record."""
+    folder = f"desc-id-{desc_run.descrunid}"
+    run_dir = os.path.join(settings.MEDIA_ROOT, folder)
     os.makedirs(run_dir, exist_ok=True)
     if zip_file:
         _save_upload(zip_file, run_dir, "equilibrium.zip")
-        desc_run.outputfile = f"{desc_run.descrunid}/equilibrium.zip"
+        desc_run.outputfile = f"{folder}/equilibrium.zip"
     if surface_file:
         _save_upload(surface_file, run_dir, "surface_plot.webp")
-        desc_run.surface_plot = f"{desc_run.descrunid}/surface_plot.webp"
+        desc_run.surface_plot = f"{folder}/surface_plot.webp"
     if boozer_file:
         _save_upload(boozer_file, run_dir, "boozer_plot.webp")
-        desc_run.boozer_plot = f"{desc_run.descrunid}/boozer_plot.webp"
+        desc_run.boozer_plot = f"{folder}/boozer_plot.webp"
     if plot3d_file:
         _save_upload(plot3d_file, run_dir, "3d_plot.html")
-        desc_run.plot3d = f"{desc_run.descrunid}/3d_plot.html"
+        desc_run.plot3d = f"{folder}/3d_plot.html"
     desc_run.save()
 
 
@@ -500,7 +662,7 @@ _OUTPUT_COLUMNS = {
         "configurations (related)": [
             "configurations.name",
             "configurations.NFP",
-            "configurations.class",
+            "configurations.classification",
             "configurations.stell_sym",
             "configurations.aspect_ratio",
             "configurations.major_radius",
@@ -512,8 +674,6 @@ _OUTPUT_COLUMNS = {
         ],
         "devices (related)": [
             "devices.name",
-            "devices.class",
-            "devices.NFP",
         ],
         "publications (related)": [
             "publications.publicationid",
@@ -545,14 +705,11 @@ _OUTPUT_COLUMNS = {
             "average_elongation",
             "Z_excursion",
             "R_excursion",
-            "class",
+            "classification",
             "date_created",
         ],
         "devices (related)": [
             "devices.name",
-            "devices.class",
-            "devices.NFP",
-            "devices.stell_sym",
         ],
     },
     "devices": {
@@ -561,16 +718,13 @@ _OUTPUT_COLUMNS = {
             "user_created",
             "name",
             "description",
-            "class",
-            "NFP",
-            "stell_sym",
             "date_created",
             "date_updated",
         ],
         "configurations (related)": [
             "configurations.name",
             "configurations.NFP",
-            "configurations.class",
+            "configurations.classification",
             "configurations.aspect_ratio",
             "configurations.major_radius",
         ],
@@ -600,7 +754,7 @@ _OUTPUT_COLUMNS = {
         "configurations (related)": [
             "configurations.name",
             "configurations.NFP",
-            "configurations.class",
+            "configurations.classification",
             "configurations.stell_sym",
             "configurations.aspect_ratio",
             "configurations.major_radius",

@@ -113,7 +113,21 @@
   </button>
 </div>
 
+<div id="dl-all-wrapper" style="display:none; justify-content:center; margin-top:8px;">
+  <form id="dl-all-form" method="post" action="{% url 'download_all' %}">
+    {% csrf_token %}
+    <input type="hidden" id="dl-all-input" name="descrunids" value="">
+    <button type="submit" style="background-color:rgb(27,111,147);">DOWNLOAD ALL DESC FILES</button>
+  </form>
+</div>
+
 <div id="resultOutput" style="display:none;"></div>
+
+<!-- Image popup overlay -->
+<div id="img-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:9999;align-items:center;justify-content:center;cursor:zoom-out;" onclick="closeImgModal()">
+  <span style="position:fixed;top:18px;right:26px;color:white;font-size:40px;cursor:pointer;line-height:1;user-select:none;" onclick="closeImgModal()">&times;</span>
+  <img id="img-modal-img" src="" alt="" style="max-width:92vw;max-height:92vh;object-fit:contain;border-radius:6px;cursor:default;" onclick="event.stopPropagation()">
+</div>
 {% endblock %}
 
 
@@ -165,6 +179,14 @@ document.getElementById('inputForm').addEventListener('submit', function(e) {
       if (table) {
         $(table).DataTable({ paging: false, scrollX: true, autoWidth: false });
       }
+      const dlMeta = output.querySelector('#dl-all-meta');
+      const dlWrapper = document.getElementById('dl-all-wrapper');
+      if (dlMeta && dlMeta.dataset.runids) {
+        document.getElementById('dl-all-input').value = dlMeta.dataset.runids;
+        dlWrapper.style.display = 'flex';
+      } else {
+        dlWrapper.style.display = 'none';
+      }
     });
 });
 
@@ -215,6 +237,25 @@ columnOUT.addEventListener('change', function() {
 function clearAll() {
   document.getElementById('selectedItemsContainer').innerHTML = '';
 }
+
+// Image popup
+function closeImgModal() {
+  document.getElementById('img-modal').style.display = 'none';
+  document.body.style.overflow = '';
+}
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeImgModal();
+});
+document.getElementById('resultOutput').addEventListener('click', function(e) {
+  const el = e.target.closest('.img-popup');
+  if (!el) return;
+  const src = el.dataset.src;
+  if (!src) return;
+  const modal = document.getElementById('img-modal');
+  document.getElementById('img-modal-img').src = src;
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+});
 
 // CSV download
 function tableToCSV() {
