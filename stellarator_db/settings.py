@@ -94,6 +94,7 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # --- Media / File Storage ---
 if ON_AWS:
@@ -102,6 +103,14 @@ if ON_AWS:
     AWS_ACCESS_KEY_ID = os.environ.get("S3_ACCESS_KEY", "")
     AWS_SECRET_ACCESS_KEY = os.environ.get("S3_SECRET_KEY", "")
     AWS_S3_FILE_OVERWRITE = False
+    CSRF_TRUSTED_ORIGINS = [
+        o.strip() for o in os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",") if o.strip()
+    ]
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     STORAGES = {
         "default": {
             "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",

@@ -1,4 +1,5 @@
 Django>=5.2
+gunicorn>=21.2            # WSGI server for production
 
 # Production (AWS) only — not needed for local dev
 psycopg2-binary>=2.9      # PostgreSQL driver
