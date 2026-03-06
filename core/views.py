@@ -1,9 +1,10 @@
-import os
 import re
 import csv
 import io
 from functools import wraps
 from datetime import date
+
+from django.core.files.storage import default_storage
 
 from django.shortcuts import render, redirect
 from django.contrib.auth import login, logout, authenticate
@@ -136,16 +137,25 @@ def details_view(request, run_type, run_id):
 
     plot3d_content = ""
     if run_type == "desc" and getattr(run, "plot3d", ""):
-        plot3d_path = os.path.join(settings.MEDIA_ROOT, run.plot3d)
         try:
-            with open(plot3d_path, "r", encoding="utf-8") as fh:
-                plot3d_content = fh.read()
-        except OSError:
+            with default_storage.open(run.plot3d, "rb") as fh:
+                plot3d_content = fh.read().decode("utf-8")
+        except (OSError, FileNotFoundError):
             plot3d_content = ""
 
-    surface_url = f"{murl}/{run.surface_plot}" if run_type == "desc" and getattr(run, "surface_plot", "") else None
-    boozer_url = f"{murl}/{run.boozer_plot}" if run_type == "desc" and getattr(run, "boozer_plot", "") else None
-    download_url = f"{murl}/{run.outputfile}" if getattr(run, "outputfile", "") else None
+    surface_url = (
+        f"{murl}/{run.surface_plot}"
+        if run_type == "desc" and getattr(run, "surface_plot", "")
+        else None
+    )
+    boozer_url = (
+        f"{murl}/{run.boozer_plot}"
+        if run_type == "desc" and getattr(run, "boozer_plot", "")
+        else None
+    )
+    download_url = (
+        f"{murl}/{run.outputfile}" if getattr(run, "outputfile", "") else None
+    )
 
     return render(
         request,
@@ -185,11 +195,10 @@ def download_all_view(request):
         for runid in runids:
             run = DescRun.objects.filter(descrunid=runid).first()
             if run and getattr(run, "outputfile", ""):
-                path = os.path.join(settings.MEDIA_ROOT, run.outputfile)
                 try:
-                    with open(path, "rb") as fh:
+                    with default_storage.open(run.outputfile, "rb") as fh:
                         zf.writestr(f"desc_{runid}_equilibrium.zip", fh.read())
-                except OSError:
+                except (OSError, FileNotFoundError):
                     pass
     buf.seek(0)
     response = HttpResponse(buf.read(), content_type="application/zip")
@@ -328,15 +337,16 @@ def api_query(request):
     if joins:
         sql += " " + " ".join(joins)
 
+    ph = "%s" if connection.vendor == "postgresql" else "?"
     params = []
     if qfin and qthr and qfin in allowed_filter:
         operator, value = _parse_criteria(qthr)
         if operator:
             qualified_col = f"{qtable}.{qfin}"
             if operator.upper() == "LIKE":
-                sql += f" WHERE {qualified_col} LIKE ?"
+                sql += f" WHERE {qualified_col} LIKE {ph}"
             else:
-                sql += f" WHERE {qualified_col} {operator} ?"
+                sql += f" WHERE {qualified_col} {operator} {ph}"
             params.append(value)
 
     try:
@@ -399,11 +409,13 @@ def api_query(request):
             outf = row_dict.get("outputfile") or ""
             surf_cell = (
                 f"<span class='img-popup' data-src='{murl}/{surf}' style='cursor:pointer;'>Image</span>"
-                if surf else "Missing Image"
+                if surf
+                else "Missing Image"
             )
             booz_cell = (
                 f"<span class='img-popup' data-src='{murl}/{booz}' style='cursor:pointer;'>Image</span>"
-                if booz else "Missing Image"
+                if booz
+                else "Missing Image"
             )
             dl_cell = f"<a href='{murl}/{outf}'>DESC</a>" if outf else "Missing File"
             html += f"<td>{surf_cell}</td><td>{booz_cell}</td><td>{dl_cell}</td>"
@@ -415,7 +427,9 @@ def api_query(request):
     html += "</tbody></table>"
     if dl_runids:
         ids = ",".join(dl_runids)
-        html += f'<div id="dl-all-meta" data-runids="{ids}" style="display:none;"></div>'
+        html += (
+            f'<div id="dl-all-meta" data-runids="{ids}" style="display:none;"></div>'
+        )
     return HttpResponse(html)
 
 
@@ -468,27 +482,24 @@ def _fields_from_csv(data, fields):
     return result
 
 
-def _upsert_device(device_file, username):
-    """Parse device CSV and create/update the Device record. Returns the Device instance."""
+def _create_device(device_file, username):
+    """Parse device CSV and always create a new Device record. Returns the Device instance."""
     data = _parse_csv_first_row(device_file)
     if not data:
         return None
     defaults = _fields_from_csv(data, schema.DEVICE_FIELDS)
-    defaults.pop("name", None)  # lookup key — handled separately
+    defaults.pop("name", None)
     defaults["user_created"] = username
-    device, _ = Device.objects.get_or_create(
-        name=data.get("name", ""), defaults=defaults
-    )
-    return device
+    return Device.objects.create(name=data.get("name", ""), **defaults)
 
 
-def _upsert_configuration(config_file, username, device_obj=None):
-    """Parse configuration CSV and create/update the Configuration record. Returns the Configuration instance."""
+def _create_configuration(config_file, username, device_obj=None):
+    """Parse configuration CSV and always create a new Configuration record. Returns the Configuration instance."""
     data = _parse_csv_first_row(config_file)
     if not data:
         return None
     defaults = _fields_from_csv(data, schema.CONFIG_FIELDS)
-    defaults.pop("name", None)  # stored separately
+    defaults.pop("name", None)
     defaults["user_created"] = username
     if device_obj is not None:
         defaults["device"] = device_obj
@@ -498,31 +509,29 @@ def _upsert_configuration(config_file, username, device_obj=None):
             found = Device.objects.filter(deviceid=data["deviceid"]).first()
             if found:
                 defaults["device"] = found
-    name = data.get("name", "")
-    # name is no longer unique — reuse first match if it exists, otherwise create
-    config = Configuration.objects.filter(name=name).first()
-    if config is None:
-        config = Configuration.objects.create(name=name, **defaults)
-    return config
+    return Configuration.objects.create(name=data.get("name", ""), **defaults)
 
 
 def _save_desc_run_files(desc_run, zip_file, surface_file, boozer_file, plot3d_file):
-    """Save uploaded files to MEDIA_ROOT/desc-id-<id>/ and update the record."""
-    folder = f"desc-id-{desc_run.descrunid}"
-    run_dir = os.path.join(settings.MEDIA_ROOT, folder)
-    os.makedirs(run_dir, exist_ok=True)
+    """Save uploaded files via default_storage (local or S3) and update the record."""
+    rid = desc_run.descrunid
+    folder = f"desc-id-{rid}"
     if zip_file:
-        _save_upload(zip_file, run_dir, "equilibrium.zip")
-        desc_run.outputfile = f"{folder}/equilibrium.zip"
+        desc_run.outputfile = default_storage.save(
+            f"{folder}/desc-eq-id{rid}.zip", zip_file
+        )
     if surface_file:
-        _save_upload(surface_file, run_dir, "surface_plot.webp")
-        desc_run.surface_plot = f"{folder}/surface_plot.webp"
+        desc_run.surface_plot = default_storage.save(
+            f"{folder}/desc-surface-id{rid}.webp", surface_file
+        )
     if boozer_file:
-        _save_upload(boozer_file, run_dir, "boozer_plot.webp")
-        desc_run.boozer_plot = f"{folder}/boozer_plot.webp"
+        desc_run.boozer_plot = default_storage.save(
+            f"{folder}/desc-boozer-id{rid}.webp", boozer_file
+        )
     if plot3d_file:
-        _save_upload(plot3d_file, run_dir, "3d_plot.html")
-        desc_run.plot3d = f"{folder}/3d_plot.html"
+        desc_run.plot3d = default_storage.save(
+            f"{folder}/desc-3dplot-id{rid}.html", plot3d_file
+        )
     desc_run.save()
 
 
@@ -543,24 +552,24 @@ def _handle_file_upload(request):
     device_obj = None
     try:
         if request.FILES.get("deviceToUpload"):
-            device_obj = _upsert_device(request.FILES["deviceToUpload"], username)
+            device_obj = _create_device(request.FILES["deviceToUpload"], username)
     except Exception as e:
         return {"success": False, "message": f"Could not parse device CSV: {e}"}
 
     config_obj = None
     try:
         if request.FILES.get("configToUpload"):
-            config_obj = _upsert_configuration(
+            config_obj = _create_configuration(
                 request.FILES["configToUpload"], username, device_obj=device_obj
             )
     except Exception as e:
         return {"success": False, "message": f"Could not parse configuration CSV: {e}"}
 
     if config_obj is None:
-        # CSV column is 'config_name' (name label) or 'configid' (integer)
-        config_name = data.get("config_name") or data.get("configid", "")
-        if config_name:
-            config_obj = Configuration.objects.filter(name=config_name).first()
+        # No config file uploaded — link to existing config by its integer PK
+        raw = str(data.get("configid", "")).strip()
+        if raw.isdigit():
+            config_obj = Configuration.objects.filter(configid=int(raw)).first()
 
     desc_fields = _fields_from_csv(data, schema.DESC_RUN_FIELDS)
     desc_fields["user_created"] = username
@@ -576,9 +585,14 @@ def _handle_file_upload(request):
         request.FILES.get("plot3dToUpload"),
     )
 
+    parts = [f"DESC run #{desc_run.descrunid}"]
+    if config_obj:
+        parts.append(f"configuration #{config_obj.configid}")
+    if device_obj:
+        parts.append(f"device #{device_obj.deviceid}")
     return {
         "success": True,
-        "message": f"Successfully uploaded DESC run #{desc_run.descrunid}.",
+        "message": f"Successfully uploaded: {', '.join(parts)}.",
     }
 
 
@@ -587,42 +601,41 @@ def _handle_publication_upload(request):
     first_name = request.POST.get("first_name", "").strip()
     last_name = request.POST.get("last_name", "").strip()
     doi = request.POST.get("doi", "").strip()
-    pub_id = request.POST.get("pub_id", "").strip()
     citation = request.POST.get("citation", "").strip()
 
-    if not pub_id:
-        return {"success": False, "message": "Publication ID is required."}
-
-    pub, created = Publication.objects.get_or_create(
-        pub_label=pub_id,
-        defaults={
-            "correspauthor_firstname": first_name,
-            "correspauthor_lastname": last_name,
-            "DOI": doi,
-            "citation": citation,
-        },
-    )
+    if doi:
+        # Deduplicate by DOI — reuse existing publication if the DOI already exists
+        pub, created = Publication.objects.get_or_create(
+            DOI=doi,
+            defaults={
+                "correspauthor_firstname": first_name,
+                "correspauthor_lastname": last_name,
+                "citation": citation,
+            },
+        )
+    else:
+        pub = Publication.objects.create(
+            correspauthor_firstname=first_name,
+            correspauthor_lastname=last_name,
+            DOI="",
+            citation=citation,
+        )
+        created = True
 
     if runid:
         try:
             desc_run = DescRun.objects.get(descrunid=int(runid))
             desc_run.publication = pub
-            desc_run.save(update_fields=["publicationid"])
+            desc_run.save(update_fields=["publication"])
         except (DescRun.DoesNotExist, ValueError):
             return {"success": False, "message": f"DESC Run ID {runid} not found."}
 
     action = "Created" if created else "Found existing"
+    linked = f" and linked it to DESC Run #{runid}" if runid else ""
     return {
         "success": True,
-        "message": f'{action} publication "{pub_id}" and linked it to DESC Run #{runid or "N/A"}.',
+        "message": f"{action} publication #{pub.publicationid}{linked}.",
     }
-
-
-def _save_upload(file_obj, directory, filename):
-    path = os.path.join(directory, filename)
-    with open(path, "wb") as f:
-        for chunk in file_obj.chunks():
-            f.write(chunk)
 
 
 # ---------------------------------------------------------------------------
