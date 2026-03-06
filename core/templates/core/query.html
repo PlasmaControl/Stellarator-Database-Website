@@ -5,6 +5,7 @@
 {% block extra_head %}
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
 <style>
+  .main-content { padding-left: 1.5%; padding-right: 1.5%; }
   #resultOutput a,
   #resultOutput .img-popup {
     color: white;
@@ -19,7 +20,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="page-title">Query Form</div>
+<div class="page-title"><b>Query Form</b></div>
 
 <!-- Toggle explanation -->
 <div style="display:flex; justify-content:center;">
@@ -125,11 +126,16 @@
   </button>
 </div>
 
-<div id="dl-all-wrapper" style="display:none; justify-content:center; margin-top:8px;">
+<div id="dl-all-wrapper" style="display:none; justify-content:center; margin-top:8px; gap:16px; flex-wrap:wrap;">
   <form id="dl-all-form" method="post" action="{% url 'download_all' %}">
     {% csrf_token %}
     <input type="hidden" id="dl-all-input" name="descrunids" value="">
     <button type="submit" style="background-color:rgb(27,111,147);">DOWNLOAD ALL DESC FILES</button>
+  </form>
+  <form id="dl-vmec-form" method="post" action="{% url 'download_all_vmec' %}">
+    {% csrf_token %}
+    <input type="hidden" id="dl-vmec-input" name="vmecrunids" value="">
+    <button type="submit" style="background-color:rgb(27,111,147);">DOWNLOAD ALL VMEC FILES</button>
   </form>
 </div>
 
@@ -191,14 +197,16 @@ document.getElementById('inputForm').addEventListener('submit', function(e) {
       if (table) {
         $(table).DataTable({ paging: false, scrollX: true, autoWidth: false });
       }
-      const dlMeta = output.querySelector('#dl-all-meta');
+      const dlDescMeta = output.querySelector('#dl-all-meta');
+      const dlVmecMeta = output.querySelector('#dl-vmec-meta');
+      const hasDesc = dlDescMeta && dlDescMeta.dataset.runids;
+      const hasVmec = dlVmecMeta && dlVmecMeta.dataset.runids;
       const dlWrapper = document.getElementById('dl-all-wrapper');
-      if (dlMeta && dlMeta.dataset.runids) {
-        document.getElementById('dl-all-input').value = dlMeta.dataset.runids;
-        dlWrapper.style.display = 'flex';
-      } else {
-        dlWrapper.style.display = 'none';
-      }
+      document.getElementById('dl-all-form').style.display = hasDesc ? 'block' : 'none';
+      document.getElementById('dl-vmec-form').style.display = hasVmec ? 'block' : 'none';
+      if (hasDesc) document.getElementById('dl-all-input').value = dlDescMeta.dataset.runids;
+      if (hasVmec) document.getElementById('dl-vmec-input').value = dlVmecMeta.dataset.runids;
+      dlWrapper.style.display = (hasDesc || hasVmec) ? 'flex' : 'none';
     });
 });
 

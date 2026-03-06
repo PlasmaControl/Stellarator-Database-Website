@@ -298,7 +298,6 @@ html button:not(.theme-toggle) {
   color: #C5C5C5;
   transition: transform 0.2s;
   border-radius: 8px;
-  border: 1px solid #d8d5d5;
   font-weight: 600;
   cursor: pointer;
 }
@@ -481,6 +480,10 @@ input[type="file"] { color: var(--text); }
   line-height: 1.5;
 }
 
+.info-text h5{
+  margin: 5px 5px;
+}
+
 .info-text a:hover { color: var(--text); }
 
 .upload-wrapper {
@@ -528,8 +531,7 @@ input[type="file"] { color: var(--text); }
 
 .upload-element h2 {
   color: var(--heading);
-  margin-left: 15px;
-  margin-top: 15px;
+  margin: 5px 0 0 25px;
 }
 
 .upload-element h5 {
@@ -548,8 +550,8 @@ input[type="file"] { color: var(--text); }
   display: flex;
   justify-content: center;
   align-items: flex-end;
-  margin-bottom: 25px;
-  margin-top: 35px;
+  margin-bottom: 5px;
+  margin-top: 5px;
 }
 
 .error-div  { color: #ff6b6b; }

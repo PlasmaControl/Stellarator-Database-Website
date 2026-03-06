@@ -18,6 +18,7 @@ urlpatterns = [
 
     # Downloads
     path('download-all/', views.download_all_view, name='download_all'),
+    path('download-all-vmec/', views.download_all_vmec_view, name='download_all_vmec'),
 
     # AJAX API
     path('api/columns/single/', views.api_columns_single, name='api_columns_single'),

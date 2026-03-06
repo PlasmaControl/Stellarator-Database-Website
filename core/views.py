@@ -206,6 +206,34 @@ def download_all_view(request):
     return response
 
 
+@require_POST
+def download_all_vmec_view(request):
+    """Zip all output files for the given VMEC run IDs and stream as a single download."""
+    import zipfile
+    import io
+    from .models import VmecRun
+
+    runids_str = request.POST.get("vmecrunids", "")
+    runids = [int(x) for x in runids_str.split(",") if x.strip().isdigit()]
+    if not runids:
+        return HttpResponse("No runs specified.", status=400)
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
+        for runid in runids:
+            run = VmecRun.objects.filter(vmecrunid=runid).first()
+            if run and getattr(run, "outputfile", ""):
+                try:
+                    with default_storage.open(run.outputfile, "rb") as fh:
+                        zf.writestr(f"vmec_{runid}_output.zip", fh.read())
+                except (OSError, FileNotFoundError):
+                    pass
+    buf.seek(0)
+    response = HttpResponse(buf.read(), content_type="application/zip")
+    response["Content-Disposition"] = 'attachment; filename="vmec_runs.zip"'
+    return response
+
+
 def data_description_view(request):
     tables = _get_table_descriptions()
     return render(request, "core/data_description.html", {"tables": tables})
@@ -264,7 +292,7 @@ def api_columns(request):
         return HttpResponse("")
     options = ""
     for group_label, cols in groups.items():
-        tbl_name = group_label.replace(" (related)", "")
+        tbl_name = group_label
         for col in cols:
             value = col if "." in col else f"{tbl_name}.{col}"
             label = value.replace(".", "->")
@@ -303,7 +331,7 @@ def api_query(request):
     all_output = set()
     groups = output_groups
     for group_label, cols in groups.items():
-        tbl_name = group_label.replace(" (related)", "")
+        tbl_name = group_label
         for col in cols:
             all_output.add(col if "." in col else f"{tbl_name}.{col}")
 
@@ -313,21 +341,58 @@ def api_query(request):
             '<p style="color:red">No valid output columns selected.</p>'
         )
 
-    # Determine if Details / media columns are needed (mirrors PHP $needsDetails logic).
-    # For desc_runs and vmec_runs this is always true.
-    needs_details = qtable in ("desc_runs", "vmec_runs")
+    # If the user applied a filter, ensure that column appears in the output
+    # even if they didn't select it explicitly.
+    if qfin and qfin in allowed_filter:
+        qualified_filter = f"{qtable}.{qfin}"
+        if qualified_filter not in safe_output:
+            safe_output.insert(0, qualified_filter)
 
-    # Extra columns required for link generation that the user may not have selected.
-    # These are appended to the SELECT but hidden from the data columns in the output.
-    if qtable == "desc_runs":
-        _media_bare = ["descrunid", "surface_plot", "boozer_plot", "outputfile"]
-    elif qtable == "vmec_runs":
-        _media_bare = ["vmecrunid"]
-    else:
-        _media_bare = []
-    extra_bare = [c for c in _media_bare if f"{qtable}.{c}" not in safe_output]
-    extra_qualified = [f"{qtable}.{c}" for c in extra_bare]
-    hidden_cols = set(extra_bare)  # bare col names that should be hidden in display
+    # Always show the primary key of the queried table as the first visible column.
+    _TABLE_PK = {
+        "desc_runs": "descrunid",
+        "configurations": "configid",
+        "devices": "deviceid",
+        "publications": "publicationid",
+        "vmec_runs": "vmecrunid",
+    }
+    pk_col = _TABLE_PK.get(qtable)
+    if pk_col:
+        qualified_pk = f"{qtable}.{pk_col}"
+        if qualified_pk in safe_output:
+            safe_output.remove(qualified_pk)
+        safe_output.insert(0, qualified_pk)
+
+    # Detect whether desc_runs / vmec_runs data is in the result
+    # (either as the primary table or via related columns selected by the user).
+    has_desc = qtable == "desc_runs" or any(
+        c.startswith("desc_runs.") for c in safe_output
+    )
+    has_vmec = qtable == "vmec_runs" or any(
+        c.startswith("vmec_runs.") for c in safe_output
+    )
+
+    # Extra columns needed for link/media generation — added to SELECT but hidden in display.
+    extra_qualified = []
+    hidden_cols = set()
+
+    if has_desc:
+        for c in ["descrunid", "surface_plot", "boozer_plot"]:
+            if f"desc_runs.{c}" not in safe_output:
+                extra_qualified.append(f"desc_runs.{c}")
+                hidden_cols.add(c)
+        # Alias outputfile to avoid collision with vmec_runs.outputfile
+        if "desc_runs.outputfile" not in safe_output:
+            extra_qualified.append("desc_runs.outputfile AS desc_outputfile")
+            hidden_cols.add("desc_outputfile")
+
+    if has_vmec:
+        if "vmec_runs.vmecrunid" not in safe_output:
+            extra_qualified.append("vmec_runs.vmecrunid")
+            hidden_cols.add("vmecrunid")
+        if "vmec_runs.outputfile" not in safe_output:
+            extra_qualified.append("vmec_runs.outputfile AS vmec_outputfile")
+            hidden_cols.add("vmec_outputfile")
 
     # Build SQL
     joins = _JOINS.get(qtable, [])
@@ -337,16 +402,15 @@ def api_query(request):
     if joins:
         sql += " " + " ".join(joins)
 
-    ph = "%s" if connection.vendor == "postgresql" else "?"
     params = []
     if qfin and qthr and qfin in allowed_filter:
         operator, value = _parse_criteria(qthr)
         if operator:
             qualified_col = f"{qtable}.{qfin}"
             if operator.upper() == "LIKE":
-                sql += f" WHERE {qualified_col} LIKE {ph}"
+                sql += f" WHERE {qualified_col} LIKE %s"
             else:
-                sql += f" WHERE {qualified_col} {operator} {ph}"
+                sql += f" WHERE {qualified_col} {operator} %s"
             params.append(value)
 
     try:
@@ -361,23 +425,43 @@ def api_query(request):
         return HttpResponse('<p style="color:orange">No results found.</p>')
 
     murl = settings.MEDIA_URL.rstrip("/")
-    dl_runids = []  # descrunids that have a zip file — collected during row loop
+    dl_runids = []       # descrunids with output files
+    dl_vmec_runids = []  # vmecrunids with output files
 
-    # Build HTML table header
+    # Build HTML table header — Details first, data columns, then media columns at end
     html = '<table class="result-table" id="queryResultTable">'
     html += "<thead><tr>"
+    if has_desc:
+        html += "<th>DESC Details</th>"
+    if has_vmec:
+        html += "<th>VMEC Details</th>"
     for name in col_names:
         if name not in hidden_cols:
             html += f"<th>{name}</th>"
-    if needs_details:
-        html += "<th>Details</th>"
-    if qtable == "desc_runs":
+    if has_desc:
         html += "<th>Surface Plot</th><th>Boozer Plot</th><th>Download</th>"
     html += "</tr></thead><tbody>"
 
     for row in rows:
         row_dict = dict(zip(col_names, row))
         html += "<tr>"
+
+        # Details links — first columns
+        if has_desc:
+            desc_id = row_dict.get("descrunid")
+            if desc_id is not None:
+                detail_link = f"<a href='/details/desc/{desc_id}/' target='_blank'>Click</a>"
+            else:
+                detail_link = "No Data"
+            html += f"<td>{detail_link}</td>"
+
+        if has_vmec:
+            vmec_id = row_dict.get("vmecrunid")
+            if vmec_id is not None:
+                detail_link = f"<a href='/details/vmec/{vmec_id}/' target='_blank'>Click</a>"
+            else:
+                detail_link = "No Data"
+            html += f"<td>{detail_link}</td>"
 
         # Regular display columns (skip hidden media columns)
         for name, cell in zip(col_names, row):
@@ -386,27 +470,11 @@ def api_query(request):
             val = "" if cell is None else str(cell)
             html += f"<td>{val}</td>"
 
-        # Details link — mirrors PHP $detailLink logic
-        if needs_details:
-            if qtable == "desc_runs":
-                run_id = row_dict.get("descrunid")
-                detail_link = (
-                    f"<a href='/details/desc/{run_id}/' target='_blank'>Click</a>"
-                )
-            elif qtable == "vmec_runs":
-                run_id = row_dict.get("vmecrunid")
-                detail_link = (
-                    f"<a href='/details/vmec/{run_id}/' target='_blank'>Click</a>"
-                )
-            else:
-                detail_link = "No Data"
-            html += f"<td>{detail_link}</td>"
-
-        # Surface Plot / Boozer Plot / Download — desc_runs only (mirrors PHP image logic)
-        if qtable == "desc_runs":
+        # Surface Plot / Boozer Plot / Download — whenever desc_runs are in the result
+        if has_desc:
             surf = row_dict.get("surface_plot") or ""
             booz = row_dict.get("boozer_plot") or ""
-            outf = row_dict.get("outputfile") or ""
+            outf = row_dict.get("desc_outputfile") or ""
             surf_cell = (
                 f"<span class='img-popup' data-src='{murl}/{surf}' style='cursor:pointer;'>Image</span>"
                 if surf
@@ -422,14 +490,20 @@ def api_query(request):
             if outf and row_dict.get("descrunid") is not None:
                 dl_runids.append(str(row_dict["descrunid"]))
 
+        if has_vmec:
+            vmec_outf = row_dict.get("vmec_outputfile") or ""
+            if vmec_outf and row_dict.get("vmecrunid") is not None:
+                dl_vmec_runids.append(str(row_dict["vmecrunid"]))
+
         html += "</tr>"
 
     html += "</tbody></table>"
     if dl_runids:
         ids = ",".join(dl_runids)
-        html += (
-            f'<div id="dl-all-meta" data-runids="{ids}" style="display:none;"></div>'
-        )
+        html += f'<div id="dl-all-meta" data-runids="{ids}" style="display:none;"></div>'
+    if dl_vmec_runids:
+        ids = ",".join(dl_vmec_runids)
+        html += f'<div id="dl-vmec-meta" data-runids="{ids}" style="display:none;"></div>'
     return HttpResponse(html)
 
 
@@ -642,9 +716,9 @@ def _handle_publication_upload(request):
 # Query helpers — column definitions
 # ---------------------------------------------------------------------------
 
-# _OUTPUT_COLUMNS[table] maps group labels to column lists.
+# _OUTPUT_COLUMNS[table] maps table names to column lists.
 # The group whose key == table name holds the main (filterable) columns.
-# Related groups have keys like 'configurations (related)'.
+# Other keys are related tables whose columns can be included in SELECT.
 _OUTPUT_COLUMNS = {
     "desc_runs": {
         "desc_runs": [
@@ -674,7 +748,7 @@ _OUTPUT_COLUMNS = {
             "publicationid",
             "date_created",
         ],
-        "configurations (related)": [
+        "configurations": [
             "configurations.name",
             "configurations.NFP",
             "configurations.classification",
@@ -687,11 +761,10 @@ _OUTPUT_COLUMNS = {
             "configurations.volume_averaged_B",
             "configurations.total_toroidal_current",
         ],
-        "devices (related)": [
+        "devices": [
             "devices.name",
         ],
-        "publications (related)": [
-            "publications.publicationid",
+        "publications": [
             "publications.correspauthor_firstname",
             "publications.correspauthor_lastname",
             "publications.DOI",
@@ -723,8 +796,35 @@ _OUTPUT_COLUMNS = {
             "classification",
             "date_created",
         ],
-        "devices (related)": [
+        "devices": [
             "devices.name",
+        ],
+        "desc_runs": [
+            "descrunid",
+            "version",
+            "initialization_method",
+            "l_rad",
+            "m_pol",
+            "n_tor",
+            "l_grid",
+            "m_grid",
+            "n_grid",
+            "current_specification",
+            "iota_max",
+            "iota_min",
+            "pressure_max",
+            "pressure_min",
+            "D_Mercier_min",
+            "D_Mercier_max",
+            "vacuum",
+            "spectral_indexing",
+            "sym",
+        ],
+        "vmec_runs": [
+            "vmecrunid",
+            "vmec_version",
+            "mpol",
+            "mtor",
         ],
     },
     "devices": {
@@ -736,12 +836,39 @@ _OUTPUT_COLUMNS = {
             "date_created",
             "date_updated",
         ],
-        "configurations (related)": [
+        "configurations": [
             "configurations.name",
             "configurations.NFP",
             "configurations.classification",
             "configurations.aspect_ratio",
             "configurations.major_radius",
+        ],
+        "desc_runs": [
+            "descrunid",
+            "version",
+            "initialization_method",
+            "l_rad",
+            "m_pol",
+            "n_tor",
+            "l_grid",
+            "m_grid",
+            "n_grid",
+            "current_specification",
+            "iota_max",
+            "iota_min",
+            "pressure_max",
+            "pressure_min",
+            "D_Mercier_min",
+            "D_Mercier_max",
+            "vacuum",
+            "spectral_indexing",
+            "sym",
+        ],
+        "vmec_runs": [
+            "vmecrunid",
+            "vmec_version",
+            "mpol",
+            "mtor",
         ],
     },
     "publications": {
@@ -752,6 +879,33 @@ _OUTPUT_COLUMNS = {
             "correspauthor_lastname",
             "citation",
             "DOI",
+        ],
+        "desc_runs": [
+            "descrunid",
+            "version",
+            "initialization_method",
+            "l_rad",
+            "m_pol",
+            "n_tor",
+            "l_grid",
+            "m_grid",
+            "n_grid",
+            "current_specification",
+            "iota_max",
+            "iota_min",
+            "pressure_max",
+            "pressure_min",
+            "D_Mercier_min",
+            "D_Mercier_max",
+            "vacuum",
+            "spectral_indexing",
+            "sym",
+        ],
+        "vmec_runs": [
+            "vmecrunid",
+            "vmec_version",
+            "mpol",
+            "mtor",
         ],
     },
     "vmec_runs": {
@@ -767,7 +921,7 @@ _OUTPUT_COLUMNS = {
             "publicationid",
             "date_created",
         ],
-        "configurations (related)": [
+        "configurations": [
             "configurations.name",
             "configurations.NFP",
             "configurations.classification",
@@ -776,12 +930,36 @@ _OUTPUT_COLUMNS = {
             "configurations.major_radius",
             "configurations.minor_radius",
         ],
-        "publications (related)": [
+        "devices": [
+            "devices.name",
+        ],
+        "publications": [
             "publications.publicationid",
             "publications.correspauthor_firstname",
             "publications.correspauthor_lastname",
             "publications.DOI",
             "publications.citation",
+        ],
+        "desc_runs": [
+            "descrunid",
+            "version",
+            "initialization_method",
+            "l_rad",
+            "m_pol",
+            "n_tor",
+            "l_grid",
+            "m_grid",
+            "n_grid",
+            "current_specification",
+            "iota_max",
+            "iota_min",
+            "pressure_max",
+            "pressure_min",
+            "D_Mercier_min",
+            "D_Mercier_max",
+            "vacuum",
+            "spectral_indexing",
+            "sym",
         ],
     },
 }
@@ -790,17 +968,26 @@ _JOINS = {
     "desc_runs": [
         "LEFT JOIN configurations ON desc_runs.configid = configurations.configid",
         "LEFT JOIN devices ON configurations.deviceid = devices.deviceid",
+        "LEFT JOIN vmec_runs ON configurations.configid = vmec_runs.configid",
         "LEFT JOIN publications ON desc_runs.publicationid = publications.publicationid",
     ],
     "configurations": [
         "LEFT JOIN devices ON configurations.deviceid = devices.deviceid",
+        "LEFT JOIN desc_runs ON configurations.configid = desc_runs.configid",
+        "LEFT JOIN vmec_runs ON configurations.configid = vmec_runs.configid",
     ],
     "devices": [
         "LEFT JOIN configurations ON devices.deviceid = configurations.deviceid",
+        "LEFT JOIN desc_runs ON configurations.configid = desc_runs.configid",
+        "LEFT JOIN vmec_runs ON configurations.configid = vmec_runs.configid",
     ],
-    "publications": [],
+    "publications": [
+        "LEFT JOIN desc_runs ON publications.publicationid = desc_runs.publicationid",
+        "LEFT JOIN vmec_runs ON publications.publicationid = vmec_runs.publicationid",
+    ],
     "vmec_runs": [
         "LEFT JOIN configurations ON vmec_runs.configid = configurations.configid",
+        "LEFT JOIN desc_runs ON vmec_runs.configid = desc_runs.configid",
         "LEFT JOIN devices ON configurations.deviceid = devices.deviceid",
         "LEFT JOIN publications ON vmec_runs.publicationid = publications.publicationid",
     ],
