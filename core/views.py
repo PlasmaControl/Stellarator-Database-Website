@@ -259,6 +259,13 @@ def upload_view(request):
             else:
                 context["pub_error"] = result["message"]
 
+        elif form_type == "device":
+            result = _handle_device_upload(request)
+            if result["success"]:
+                context["device_success"] = result["message"]
+            else:
+                context["device_error"] = result["message"]
+
     return render(request, "core/upload.html", context)
 
 
@@ -668,6 +675,42 @@ def _handle_file_upload(request):
         "success": True,
         "message": f"Successfully uploaded: {', '.join(parts)}.",
     }
+
+
+def _handle_device_upload(request):
+    name = request.POST.get("device_name", "").strip()
+    description = request.POST.get("device_description", "").strip()
+    configid_raw = request.POST.get("device_configid", "").strip()
+
+    if not name:
+        return {"success": False, "message": "Device name is required."}
+
+    device = Device.objects.create(
+        name=name,
+        description=description,
+        user_created=request.user.username,
+        date_created=date.today(),
+    )
+
+    linked_config = None
+    if configid_raw.isdigit():
+        config = Configuration.objects.filter(configid=int(configid_raw)).first()
+        if config is None:
+            return {
+                "success": True,
+                "message": (
+                    f"Created device #{device.deviceid} ({name}) but "
+                    f"configuration #{configid_raw} was not found — not linked."
+                ),
+            }
+        config.device = device
+        config.save(update_fields=["device"])
+        linked_config = config
+
+    msg = f"Created device #{device.deviceid} ({name})"
+    if linked_config:
+        msg += f" and linked it to configuration #{linked_config.configid}"
+    return {"success": True, "message": msg + "."}
 
 
 def _handle_publication_upload(request):

@@ -142,4 +142,51 @@
     <button type="submit" id="confirmPub">CONFIRM PUBLICATION</button>
   </div>
 </form>
+
+<!-- ===== Device Form ===== -->
+<hr style="border-color:#333; margin:40px 0;">
+
+{% if device_success %}
+  <div class="success-div" style="text-align:center; font-size:18px; margin:20px 0;">{{ device_success }}</div>
+{% endif %}
+{% if device_error %}
+  <div class="error-div" style="text-align:center; font-size:18px; margin:20px 0;">{{ device_error }}</div>
+{% endif %}
+
+<form id="DeviceForm" method="post">
+  {% csrf_token %}
+  <input type="hidden" name="form_type" value="device">
+
+  <div class="info-text">
+    <div class="info-text-div">
+      <h5 style="margin-top:20px;">
+        Add a new device to the database. Devices represent physical experiments (e.g. W7-X, HSX) and
+        are not created automatically during run uploads — use this form to register one manually.
+        Optionally provide a Configuration ID to link the device to an existing configuration immediately.
+        Make sure the device doesn't exist in the database, if it does, explain the different configuration 
+        in the description part.
+      </h5>
+    </div>
+  </div>
+
+  <div class="upload-wrapper">
+    <div style="width:80%; display:flex; flex-direction:column; gap:10px;">
+      <div style="display:flex; gap:10px;">
+        <input placeholder="Device Name *" type="text" id="device_name" name="device_name" style="flex:2;">
+        <input placeholder="Configuration ID to link (optional)" type="text" id="device_configid" name="device_configid" style="flex:1;">
+      </div>
+      <div style="display:flex; gap:10px;">
+        <input placeholder="Description" type="text" id="device_description" name="device_description" style="width:100%;">
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex; justify-content:center; color:#888; margin:10px 0;">
+    <span>* required field</span>
+  </div>
+
+  <div class="button-div">
+    <button type="submit" id="confirmDevice">CONFIRM DEVICE</button>
+  </div>
+</form>
 {% endblock %}
