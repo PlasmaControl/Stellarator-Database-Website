@@ -25,6 +25,11 @@ Stellarator-Database-Website/
 │   ├── migrations/                  # Auto-generated schema migration files
 │   │   └── 0001_initial.py          # Full initial schema
 │   │
+│   ├── management/commands/         # Custom manage.py commands
+│   │   ├── export_database.py       # Dump all tables to CSV
+│   │   ├── fix_missing_files.py     # Report/clear broken file-path references
+│   │   └── update_desc_paths.py     # One-time: prepend descruns/ to stored paths
+│   │
 │   ├── static/core/                 # CSS, JS, images served by Django
 │   │   └── css/
 │   │       └── styles.css
@@ -47,11 +52,12 @@ Stellarator-Database-Website/
 ├── old_database_utils/              # Original PHP scripts (reference only, not used)
 │
 ├── test-storage/                    # Local file uploads (gitignored, dev only)
-│   └── desc-id-{N}/                 # One folder per DESC run ID
-│       ├── desc-eq-id{N}.zip
-│       ├── desc-surface-id{N}.webp
-│       ├── desc-boozer-id{N}.webp
-│       └── desc-3dplot-id{N}.html
+│   └── descruns/                    # All DESC run files nested here
+│       └── desc-id-{N}/             # One folder per DESC run ID
+│           ├── desc-eq-id{N}.zip
+│           ├── desc-surface-id{N}.webp
+│           ├── desc-boozer-id{N}.webp
+│           └── desc-3dplot-id{N}.html
 │
 └── staticfiles/                     # Output of collectstatic (gitignored)
 ```
@@ -120,17 +126,20 @@ vmec_runs and desc_runs connect to devices **indirectly** through configurations
 
 ## File Storage Layout (S3 / local)
 
-Uploaded files are stored under `desc-id-{descrunid}/`:
+All DESC run files are nested under `descruns/`, with one subfolder per run:
 
 ```
-desc-id-5/
-  desc-eq-id5.zip          # Equilibrium output (downloadable)
-  desc-surface-id5.webp    # Surface plot image
-  desc-boozer-id5.webp     # Boozer plot image
-  desc-3dplot-id5.html     # Interactive 3D Plotly HTML (embedded in details page)
+descruns/
+  desc-id-5/
+    desc-eq-id5.zip          # Equilibrium output (downloadable)
+    desc-surface-id5.webp    # Surface plot image
+    desc-boozer-id5.webp     # Boozer plot image
+    desc-3dplot-id5.html     # Interactive 3D Plotly HTML (embedded in details page)
 ```
 
 File paths are stored as strings in the `desc_runs` table columns `outputfile`, `surface_plot`, `boozer_plot`, and `plot3d`. Django's `default_storage` API abstracts local vs S3 access transparently.
+
+If migrating an existing deployment from the old flat layout, see `dev-notes/management-commands.md` → `update_desc_paths`.
 
 ---
 
