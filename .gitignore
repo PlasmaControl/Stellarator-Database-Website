@@ -25,3 +25,4 @@ test-storage/
 
 old_database_utils/
 sample-data
+*.csv
