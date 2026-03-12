@@ -15,7 +15,7 @@ from django.db import connection
 from django.conf import settings
 
 from .forms import RegistrationForm
-from .models import Device, Configuration, Publication, DescRun
+from .models import Device, Configuration, Publication, DescRun, User
 from . import tables as schema
 
 
@@ -431,8 +431,14 @@ def api_query(request):
     if not rows:
         return HttpResponse('<p style="color:orange">No results found.</p>')
 
+    # Build username → full name map for display
+    _fullname = {
+        u.username: u.get_full_name() or u.username
+        for u in User.objects.only("username", "first_name", "last_name")
+    }
+
     murl = settings.MEDIA_URL.rstrip("/")
-    dl_runids = []       # descrunids with output files
+    dl_runids = []  # descrunids with output files
     dl_vmec_runids = []  # vmecrunids with output files
 
     # Build HTML table header — Details first, data columns, then media columns at end
@@ -457,7 +463,9 @@ def api_query(request):
         if has_desc:
             desc_id = row_dict.get("descrunid")
             if desc_id is not None:
-                detail_link = f"<a href='/details/desc/{desc_id}/' target='_blank'>Click</a>"
+                detail_link = (
+                    f"<a href='/details/desc/{desc_id}/' target='_blank'>Click</a>"
+                )
             else:
                 detail_link = "No Data"
             html += f"<td>{detail_link}</td>"
@@ -465,7 +473,9 @@ def api_query(request):
         if has_vmec:
             vmec_id = row_dict.get("vmecrunid")
             if vmec_id is not None:
-                detail_link = f"<a href='/details/vmec/{vmec_id}/' target='_blank'>Click</a>"
+                detail_link = (
+                    f"<a href='/details/vmec/{vmec_id}/' target='_blank'>Click</a>"
+                )
             else:
                 detail_link = "No Data"
             html += f"<td>{detail_link}</td>"
@@ -474,7 +484,10 @@ def api_query(request):
         for name, cell in zip(col_names, row):
             if name in hidden_cols:
                 continue
-            val = "" if cell is None else str(cell)
+            if name == "user_created" and cell:
+                val = _fullname.get(str(cell), str(cell))
+            else:
+                val = "" if cell is None else str(cell)
             html += f"<td>{val}</td>"
 
         # Surface Plot / Boozer Plot / Download — whenever desc_runs are in the result
@@ -507,10 +520,14 @@ def api_query(request):
     html += "</tbody></table>"
     if dl_runids:
         ids = ",".join(dl_runids)
-        html += f'<div id="dl-all-meta" data-runids="{ids}" style="display:none;"></div>'
+        html += (
+            f'<div id="dl-all-meta" data-runids="{ids}" style="display:none;"></div>'
+        )
     if dl_vmec_runids:
         ids = ",".join(dl_vmec_runids)
-        html += f'<div id="dl-vmec-meta" data-runids="{ids}" style="display:none;"></div>'
+        html += (
+            f'<div id="dl-vmec-meta" data-runids="{ids}" style="display:none;"></div>'
+        )
     return HttpResponse(html)
 
 
@@ -596,7 +613,7 @@ def _create_configuration(config_file, username, device_obj=None):
 def _save_desc_run_files(desc_run, zip_file, surface_file, boozer_file, plot3d_file):
     """Save uploaded files via default_storage (local or S3) and update the record."""
     rid = desc_run.descrunid
-    folder = f"desc-id-{rid}"
+    folder = f"descruns/desc-id-{rid}"
     if zip_file:
         desc_run.outputfile = default_storage.save(
             f"{folder}/desc-eq-id{rid}.zip", zip_file
