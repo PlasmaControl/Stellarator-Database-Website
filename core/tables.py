@@ -11,9 +11,6 @@ Each field in the schema lists is a tuple: (column_name, type, description)
                   None    -> system-set (PK, FK, date, user) — not parsed from CSV
   - description : human-readable text for the data description page
 
-RENAMES maps the few column names that are Python reserved words to their Django
-model attribute names (e.g. 'class' -> 'device_class').
-
 To add a new field:
   1. Add it here in the correct table list with the right type.
   2. Run makemigrations / migrate.
@@ -313,21 +310,16 @@ def _make_field(dtype, **kwargs):
     raise ValueError(f"Unknown schema type: {dtype!r}")
 
 
-def _schema_to_fields(field_list, renames=None, skip=()):
+def _schema_to_fields(field_list, skip=()):
     """
     Convert a schema list to a dict of {attr_name: django_field}.
     Skips None-typed (system-set) fields and any column names in *skip*.
-    Applies RENAMES and sets db_column when the attribute name differs from the
-    column name (e.g. 'class' -> device_class with db_column='class').
     """
-    renames = renames or {}
     result = {}
     for col, dtype, _ in field_list:
         if dtype is None or col in skip:
             continue
-        attr = renames.get(col, col)
-        extra = {"db_column": col} if col != attr else {}
-        result[attr] = _make_field(dtype, **extra)
+        result[col] = _make_field(dtype)
     return result
 
 
