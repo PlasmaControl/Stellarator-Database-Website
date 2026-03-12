@@ -2,7 +2,7 @@
 
 A web application for sharing, uploading, and querying DESC and VMEC stellarator equilibrium data across universities and research institutions.
 
-Built with Django. Developed by the [Princeton University Plasma Physics Control Group](https://control.princeton.edu/).
+Built with Django. Developed by the [Princeton University Plasma Control Group](https://control.princeton.edu/).
 
 ---
 
@@ -39,10 +39,11 @@ The `dev-notes/` folder contains detailed documentation for common maintenance t
 | `dev-notes/updating-database-schema.md` | How to add, rename, or remove columns and tables safely |
 | `dev-notes/repository-structure.md` | File layout, key files explained, database table relationships |
 | `dev-notes/query-system.md` | How the query page and SQL builder work internally |
+| `dev-notes/management-commands.md` | How to run custom commands to update the database SQL |
 
 ---
 
 ## Contact
 
-Princeton University Plasma Physics Control Group
-Yigit Gunsur Elmacioglu — ye2698@princeton.edu
+Princeton University Plasma Control Group
+Yigit Gunsur Elmacioglu — yigit.elma@princeton.edu
