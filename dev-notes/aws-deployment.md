@@ -20,7 +20,7 @@ This project runs on an EC2 instance backed by an RDS PostgreSQL database and an
 
 **Amazon Linux 2023:**
 ```bash
-sudo dnf install -y python3 python3-pip git
+sudo dnf install -y python3.13 python3-pip git
 ```
 
 **Ubuntu:**
@@ -31,9 +31,9 @@ sudo apt update && sudo apt install -y python3 python3-pip python3-venv git
 ### 2. Clone the repo and create a virtual environment
 
 ```bash
-git clone https://github.com/Plasma-Control/Stellarator-Database-Website.git
+git clone https://github.com/PlasmaControl/Stellarator-Database-Website.git
 cd Stellarator-Database-Website
-python3 -m venv venv
+python3.13 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
@@ -44,8 +44,9 @@ pip install -r requirements.txt
 ```bash
 cp .env.example .env
 # Fill in all values in .env, then:
-source .env
+set -a; source .env; set +a
 ```
+To check that environment variables are set correctly and python can access them, run `python -c "import os; print('Host:', os.environ.get('DB_HOST'))"`, if this prints `Host: None`, there is trouple, but the above command should work better than `source .env`.
 
 All required variables are documented in `.env.example`. The critical ones:
 
