@@ -505,7 +505,7 @@ def api_query(request):
                 if booz
                 else "Missing Image"
             )
-            dl_cell = f"<a href='{murl}/{outf}'>DESC</a>" if outf else "Missing File"
+            dl_cell = f"<a href='{murl}/{outf}' name='download-button-each'>DESC</a>" if outf else "Missing File"
             html += f"<td>{surf_cell}</td><td>{booz_cell}</td><td>{dl_cell}</td>"
             if outf and row_dict.get("descrunid") is not None:
                 dl_runids.append(str(row_dict["descrunid"]))
