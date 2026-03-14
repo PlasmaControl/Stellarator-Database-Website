@@ -119,19 +119,25 @@ def details_view(request, run_type, run_id):
         return HttpResponse("<h1>Unknown run type</h1>", status=404)
 
     # Collect all raw field values for display (bare column name → value)
-    run_data = [(f.column, getattr(run, f.attname)) for f in run._meta.fields]
+    _fullname = {
+        u.username: u.get_full_name() or u.username
+        for u in User.objects.only("username", "first_name", "last_name")
+    }
+
+    def model_to_display(obj):
+        return [
+            (f.column, _fullname.get(v, v) if f.column == "user_created" else v)
+            for f in obj._meta.fields
+            for v in (getattr(obj, f.attname),)
+        ]
+
+    run_data = model_to_display(run)
 
     config = run.config  # FK object or None
-    config_data = (
-        [(f.column, getattr(config, f.attname)) for f in config._meta.fields]
-        if config
-        else []
-    )
+    config_data = model_to_display(config) if config else []
 
     pub = run.publication  # FK object or None
-    pub_data = (
-        [(f.column, getattr(pub, f.attname)) for f in pub._meta.fields] if pub else []
-    )
+    pub_data = model_to_display(pub) if pub else []
 
     murl = settings.MEDIA_URL.rstrip("/")
 
@@ -505,7 +511,11 @@ def api_query(request):
                 if booz
                 else "Missing Image"
             )
-            dl_cell = f"<a href='{murl}/{outf}' name='download-button-each'>DESC</a>" if outf else "Missing File"
+            dl_cell = (
+                f"<a href='{murl}/{outf}' name='download-button-each'>DESC</a>"
+                if outf
+                else "Missing File"
+            )
             html += f"<td>{surf_cell}</td><td>{booz_cell}</td><td>{dl_cell}</td>"
             if outf and row_dict.get("descrunid") is not None:
                 dl_runids.append(str(row_dict["descrunid"]))
@@ -576,7 +586,7 @@ def _fields_from_csv(data, fields):
         if dtype is None:
             continue
         val = data.get(col)
-        result[col] = val or "" if dtype in ("str", "text") else _CASTERS[dtype](val)
+        result[col] = (val or "") if dtype in ("str", "text") else _CASTERS[dtype](val)
     return result
 
 
