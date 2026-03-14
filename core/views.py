@@ -682,7 +682,6 @@ def _handle_file_upload(request):
     desc_fields = _fields_from_csv(data, schema.DESC_RUN_FIELDS)
     desc_fields["user_created"] = username
     desc_fields["config"] = config_obj
-    desc_fields["date_created"] = date.today()
     desc_run = DescRun.objects.create(**desc_fields)
 
     _save_desc_run_files(
@@ -716,7 +715,6 @@ def _handle_device_upload(request):
         name=name,
         description=description,
         user_created=request.user.username,
-        date_created=date.today(),
     )
 
     linked_config = None

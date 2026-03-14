@@ -30,7 +30,7 @@ DEVICE_FIELDS = [
     ("user_created", None, "User who created this device in the database"),
     ("name", "str", "Name of the device"),
     ("description", "text", "Description of the device"),
-    ("date_created", None, "The date device is saved to the database (YY/MM/DD)"),
+    ("date_created", "str", "The date device is saved to the database (YY/MM/DD)"),
     ("date_updated", None, "The date device is updated (YY/MM/DD)"),
 ]
 
@@ -153,7 +153,7 @@ CONFIG_FIELDS = [
     ),
     (
         "date_created",
-        None,
+        "str",
         "The date the configuration was saved to the database (YY/MM/DD)",
     ),
 ]
@@ -254,7 +254,7 @@ DESC_RUN_FIELDS = [
         None,
         "ID of the publication (as stored in the database) if there is any",
     ),
-    ("date_created", None, "The date the run was saved to the database (YY/MM/DD)"),
+    ("date_created", "str", "The date the run was saved to the database (YY/MM/DD)"),
 ]
 
 VMEC_RUN_FIELDS = [
@@ -273,7 +273,7 @@ VMEC_RUN_FIELDS = [
     ("inputfile", "str", "Name of the input file"),
     ("outputfile", "str", "Name of the output file"),
     ("publicationid", None, "ID of associated publication if any"),
-    ("date_created", None, "Date the run was saved to the database"),
+    ("date_created", "str", "Date the run was saved to the database"),
 ]
 
 PUBLICATION_FIELDS = [

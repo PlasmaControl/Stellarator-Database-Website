@@ -178,7 +178,7 @@
     {% for col, val in run_data %}
     <div class="data">
       <div class="data-class">{{ col }}:</div>
-      <div class="data-value">{{ val|default:"" }}</div>
+      <div class="data-value">{{ val|default_if_none:"" }}</div>
     </div>
     {% endfor %}
   </div>
@@ -190,7 +190,7 @@
     {% for col, val in config_data %}
     <div class="data">
       <div class="data-class">{{ col }}:</div>
-      <div class="data-value">{{ val|default:"" }}</div>
+      <div class="data-value">{{ val|default_if_none:"" }}</div>
     </div>
     {% endfor %}
   </div>
@@ -209,7 +209,7 @@
     {% for col, val in pub_data %}
     <div class="data">
       <div class="data-class">{{ col }}:</div>
-      <div class="data-value">{{ val|default:"" }}</div>
+      <div class="data-value">{{ val|default_if_none:"" }}</div>
     </div>
     {% endfor %}
   </div>
